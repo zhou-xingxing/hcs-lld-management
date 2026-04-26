@@ -100,3 +100,16 @@ routers/  →  services/  →  models/
 关系：Region 1:N RegionNetworkPlane N:1 NetworkPlaneType。Region 1:N IPAllocation。NetworkPlaneType 1:N IPAllocation。
 
 更详细的设计说明见 `SYSTEM_DESIGN.md`。
+
+## Python 编码规范
+
+- **类型注解**：公共函数必须完整标注参数/返回类型。禁止滥用 `Any`，必要时可用 `# type: ignore[xxx]` 加说明。用 mypy 做静态检查。
+- **导入**：绝对导入。按 标准库 / 第三方 / 应用 分三组，组内字母序，组间空行分隔。用 ruff（`I` 规则）自动排序。
+- **命名**：变量/函数 `snake_case`，类 `PascalCase`，常量 `UPPER_SNAKE_CASE`，私有辅助/方法加 `_` 前缀。
+- **错误处理**：禁止用 `None` 返回表示校验失败，禁止用 `ValueError` 表示业务异常。查找不到（not found）场景允许返回 `None`。业务违规（如 CIDR 重叠）用自定义业务异常类，Service 层 `raise`，Router 层 catch 并转 `HTTPException`。
+- **异步**：网络 IO（HTTP 请求等）鼓励用 `async/await`；DB 操作视存储引擎而定，不强求。CPU 密集型操作用同步方式或交由 worker 处理。
+- **格式**：行宽 ≤120。必须使用 black + ruff 格式化。
+- **Docstring**：公共函数和类必须写 docstring，使用 Google 风格（`Args:` / `Returns:` / `Raises:`）。
+- **Schema**：统一使用 Pydantic v2 `BaseModel`。Schema 仅用于 API 请求/响应定义，不承载业务逻辑。
+- **分层**：严格遵守 `router → service` 两层核心结构。router 不写业务逻辑，service 通过 SQLAlchemy Session 直接访问数据，不强加 repository 层。
+- **工程规范**：禁止 `print()`，使用 `logging` 模块。业务逻辑必须写 pytest 测试。CI 中必须通过 lint、type check、test 三步。
