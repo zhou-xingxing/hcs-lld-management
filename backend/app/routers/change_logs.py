@@ -23,7 +23,7 @@ def list_change_logs(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
-):
+) -> PaginatedResponse[ChangeLogResponse]:
     """查询变更日志列表，支持按实体、操作、时间筛选。"""
     query = db.query(ChangeLog)
 

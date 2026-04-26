@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -41,7 +41,7 @@ def list_regions_endpoint(
     limit: int = Query(100, ge=1, le=500),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-):
+) -> PaginatedResponse[RegionResponse]:
     """查询 Region 列表。"""
     regions, total = list_regions(db, skip=skip, limit=limit, search=search)
     items = []
@@ -65,7 +65,7 @@ def create_region_endpoint(
     data: RegionCreate,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> RegionResponse:
     """创建新 Region。"""
     try:
         region = create_region(db, data, operator)
@@ -84,7 +84,7 @@ def create_region_endpoint(
 
 
 @router.get("/{region_id}", response_model=RegionDetailResponse)
-def get_region_endpoint(region_id: str, db: Session = Depends(get_db)):
+def get_region_endpoint(region_id: str, db: Session = Depends(get_db)) -> RegionDetailResponse:
     """获取 Region 详情（含网络平面树形结构）。"""
     detail = get_region_detail(db, region_id)
     if not detail:
@@ -98,7 +98,7 @@ def update_region_endpoint(
     data: RegionUpdate,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> RegionResponse:
     """更新 Region 信息。"""
     region = update_region(db, region_id, data, operator)
     if not region:
@@ -120,7 +120,7 @@ def delete_region_endpoint(
     region_id: str,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> None:
     """删除 Region。"""
     deleted = delete_region(db, region_id, operator)
     if not deleted:
@@ -130,7 +130,7 @@ def delete_region_endpoint(
 
 # Region-Plan association endpoints
 @router.get("/{region_id}/planes")
-def list_region_planes_endpoint(region_id: str, db: Session = Depends(get_db)):
+def list_region_planes_endpoint(region_id: str, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     """查询 Region 下所有网络平面的树形结构。"""
     from app.services.region import get_region
 
@@ -146,7 +146,7 @@ def enable_plane_endpoint(
     data: RegionPlaneCreate,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> dict[str, Any]:
     """为 Region 启用根级网络平面。"""
     from app.models.network_plane_type import NetworkPlaneType
     from app.services.region import get_region
@@ -180,7 +180,7 @@ def create_child_plane_endpoint(
     data: ChildPlaneCreate,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> dict[str, Any]:
     """在指定父平面下创建子网络平面（最多 3 级嵌套）。"""
     from app.services.region import get_region
 
@@ -208,7 +208,7 @@ def disable_plane_endpoint(
     plane_id: str,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> None:
     """删除平面节点（级联删除子平面及 IP 分配）。"""
     deleted = disable_plane_for_region(db, region_id, plane_id, operator)
     if not deleted:

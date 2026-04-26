@@ -4,7 +4,7 @@ import json
 import uuid
 from datetime import datetime, timedelta
 from threading import Lock
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -14,12 +14,12 @@ from app.utils.excel_utils import parse_excel
 from app.utils.ip_utils import find_overlapping, parse_cidr
 
 # In-memory import preview cache
-_import_cache: dict[str, dict] = {}
+_import_cache: dict[str, dict[str, Any]] = {}
 _import_cache_lock = Lock()
 _IMPORT_TTL = timedelta(minutes=30)
 
 
-def store_preview(rows: list[dict]) -> str:
+def store_preview(rows: list[dict[str, Any]]) -> str:
     """存储导入预览数据到内存缓存。
 
     数据在缓存中保留 _IMPORT_TTL（30 分钟），超时后自动失效。
@@ -39,7 +39,7 @@ def store_preview(rows: list[dict]) -> str:
     return preview_id
 
 
-def get_preview(preview_id: str) -> Optional[list[dict]]:
+def get_preview(preview_id: str) -> Optional[list[dict[str, Any]]]:
     """从内存缓存中获取导入预览数据。
 
     Args:
@@ -51,12 +51,12 @@ def get_preview(preview_id: str) -> Optional[list[dict]]:
     with _import_cache_lock:
         entry = _import_cache.get(preview_id)
         if entry and datetime.utcnow() - entry["created_at"] < _IMPORT_TTL:
-            return entry["rows"]
+            return entry["rows"]  # type: ignore[no-any-return]
         _import_cache.pop(preview_id, None)
         return None
 
 
-def preview_import(file_bytes: bytes, db: Session) -> dict:
+def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
     """解析导入文件并校验数据，返回预览结果。
 
     校验内容：Region 和网络平面类型是否存在、是否已启用、
@@ -142,7 +142,7 @@ def preview_import(file_bytes: bytes, db: Session) -> dict:
     }
 
 
-def confirm_import(preview_id: str, operator: str, db: Session) -> dict:
+def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any]:
     """确认执行导入，将预览数据写入数据库。
 
     逐行写入，每行都会与已有分配做重叠检测。

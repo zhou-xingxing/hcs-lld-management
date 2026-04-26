@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class AllocationBase(BaseModel):
     plane_type_id: str
-    plane_id: str = Field(..., min_length=1, description="归属的平面节点 ID")
+    plane_id: str | None = Field(None, description="归属的平面节点 ID")
     ip_range: str = Field(..., max_length=43)
     vlan_id: Optional[int] = None
     gateway: Optional[str] = Field(None, max_length=39)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import Optional
+from typing import Any, Optional
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -68,7 +68,7 @@ def generate_template() -> io.BytesIO:
     return buf
 
 
-def parse_excel(file_bytes: bytes) -> list[dict]:
+def parse_excel(file_bytes: bytes) -> list[dict[str, Any]]:
     """Parse an Excel file into a list of row dicts.
 
     Args:
@@ -101,7 +101,7 @@ def parse_excel(file_bytes: bytes) -> list[dict]:
     return rows
 
 
-def _parse_int(v) -> Optional[int]:
+def _parse_int(v: Any) -> Optional[int]:
     if v is None:
         return None
     try:
@@ -110,7 +110,7 @@ def _parse_int(v) -> Optional[int]:
         return None
 
 
-def build_export(data: list[dict]) -> io.BytesIO:
+def build_export(data: list[dict[str, Any]]) -> io.BytesIO:
     """Build an Excel export workbook from allocation data.
 
     Args:

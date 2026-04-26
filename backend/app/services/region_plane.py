@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -11,7 +13,7 @@ from app.services.change_log import log_change
 from app.utils.ip_utils import find_overlapping, parse_cidr
 
 
-def get_region_plane_tree(db: Session, region_id: str) -> list[dict]:
+def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
     """获取 Region 下所有网络平面的树形结构。
 
     返回嵌套的树形列表，根节点为 parent_id IS NULL 的平面，
@@ -28,7 +30,7 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict]:
     all_planes = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.region_id == region_id).all()
 
     # 构建内存字典，方便 O(1) 查找和拼装树
-    plane_dict = {}
+    plane_dict: dict[str, dict[str, Any]] = {}
     for p in all_planes:
         alloc_count = db.query(func.count(IPAllocation.id)).filter(IPAllocation.plane_id == p.id).scalar() or 0
         plane_dict[p.id] = {

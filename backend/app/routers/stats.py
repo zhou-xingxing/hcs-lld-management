@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -12,7 +14,7 @@ router = APIRouter(prefix="/api/stats", tags=["Stats"])
 
 
 @router.get("")
-def get_stats(db: Session = Depends(get_db)):
+def get_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
     """获取系统概览统计数据。"""
     total_regions = db.query(func.count(Region.id)).scalar() or 0
     total_plane_types = db.query(func.count(NetworkPlaneType.id)).scalar() or 0

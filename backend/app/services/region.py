@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -47,7 +47,7 @@ def get_region(db: Session, region_id: str) -> Optional[Region]:
     return db.query(Region).filter(Region.id == region_id).first()
 
 
-def get_region_detail(db: Session, region_id: str) -> Optional[dict]:
+def get_region_detail(db: Session, region_id: str) -> Optional[dict[str, Any]]:
     """获取 Region 详情，planes 返回树形结构。
 
     Args:
@@ -64,7 +64,7 @@ def get_region_detail(db: Session, region_id: str) -> Optional[dict]:
         return None
     plane_tree = get_region_plane_tree(db, region_id)
 
-    def _count_planes(nodes: list[dict]) -> int:
+    def _count_planes(nodes: list[dict[str, Any]]) -> int:
         count = 0
         for n in nodes:
             count += 1 + _count_planes(n.get("children", []))

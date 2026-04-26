@@ -26,7 +26,7 @@ def list_plane_types_endpoint(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-):
+) -> PaginatedResponse[PlaneTypeResponse]:
     """查询网络平面类型列表。"""
     items, total = list_plane_types(db, skip=skip, limit=limit)
     result = []
@@ -48,7 +48,7 @@ def create_plane_type_endpoint(
     data: PlaneTypeCreate,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> PlaneTypeResponse:
     """创建网络平面类型。"""
     pt = create_plane_type(db, data, operator)
     db.commit()
@@ -62,7 +62,7 @@ def create_plane_type_endpoint(
 
 
 @router.get("/{pt_id}", response_model=PlaneTypeResponse)
-def get_plane_type_endpoint(pt_id: str, db: Session = Depends(get_db)):
+def get_plane_type_endpoint(pt_id: str, db: Session = Depends(get_db)) -> PlaneTypeResponse:
     """根据 ID 获取网络平面类型详情。"""
     pt = get_plane_type(db, pt_id)
     if not pt:
@@ -82,7 +82,7 @@ def update_plane_type_endpoint(
     data: PlaneTypeUpdate,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> PlaneTypeResponse:
     """更新网络平面类型。"""
     pt = update_plane_type(db, pt_id, data, operator)
     if not pt:
@@ -102,7 +102,7 @@ def delete_plane_type_endpoint(
     pt_id: str,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> None:
     """删除网络平面类型。"""
     try:
         deleted = delete_plane_type(db, pt_id, operator)

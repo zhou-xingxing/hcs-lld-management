@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,7 @@ def list_allocations(
     plane_id: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
-) -> tuple[list[dict], int]:
+) -> tuple[list[dict[str, Any]], int]:
     """查询指定 Region 下的 IP 分配列表。
 
     Args:
@@ -61,7 +61,7 @@ def get_allocation(db: Session, allocation_id: str) -> Optional[IPAllocation]:
     return db.query(IPAllocation).filter(IPAllocation.id == allocation_id).first()
 
 
-def _allocation_to_dict(a: IPAllocation) -> dict:
+def _allocation_to_dict(a: IPAllocation) -> dict[str, Any]:
     return {
         "id": a.id,
         "region_id": a.region_id,

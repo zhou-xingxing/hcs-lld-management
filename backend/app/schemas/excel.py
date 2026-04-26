@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -48,5 +48,5 @@ class StatsResponse(BaseModel):
     total_allocations: int
     total_change_logs: int
     allocation_by_status: dict[str, int]
-    allocation_by_region: list[dict]
-    recent_changes: list[dict]
+    allocation_by_region: list[dict[str, Any]]
+    recent_changes: list[dict[str, Any]]

@@ -33,7 +33,7 @@ def list_allocations_endpoint(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-):
+) -> PaginatedResponse[AllocationResponse]:
     """查询 Region 下的 IP 分配列表。"""
     if not get_region(db, region_id):
         raise HTTPException(status_code=404, detail="Region not found")
@@ -52,7 +52,7 @@ def create_allocation_endpoint(
     data: AllocationCreate,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> AllocationResponse:
     """创建 IP 分配。"""
     if not get_region(db, region_id):
         raise HTTPException(status_code=404, detail="Region not found")
@@ -81,7 +81,7 @@ def create_allocation_endpoint(
 
 
 @router.get("/api/allocations/{allocation_id}", response_model=AllocationResponse)
-def get_allocation_endpoint(allocation_id: str, db: Session = Depends(get_db)):
+def get_allocation_endpoint(allocation_id: str, db: Session = Depends(get_db)) -> AllocationResponse:
     """根据 ID 获取 IP 分配详情。"""
     a = get_allocation(db, allocation_id)
     if not a:
@@ -111,7 +111,7 @@ def update_allocation_endpoint(
     data: AllocationUpdate,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> AllocationResponse:
     """更新 IP 分配信息。"""
     try:
         allocation = update_allocation(db, allocation_id, data, operator)
@@ -144,7 +144,7 @@ def delete_allocation_endpoint(
     allocation_id: str,
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
-):
+) -> None:
     """删除 IP 分配记录。"""
     deleted = delete_allocation(db, allocation_id, operator)
     if not deleted:
@@ -158,7 +158,7 @@ def lookup_endpoint(
     q: str = Query(..., min_length=1),
     exact: bool = Query(True),
     db: Session = Depends(get_db),
-):
+) -> LookupResponse:
     """按 IP 或 CIDR 查询分配记录。"""
     try:
         results = lookup_allocations(db, q, exact)

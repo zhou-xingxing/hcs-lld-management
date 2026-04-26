@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,7 +10,7 @@ from app.routers import allocations, change_logs, excel, network_plane_types, re
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # startup: create tables
     Base.metadata.create_all(bind=engine)
     yield
@@ -41,5 +42,5 @@ app.include_router(stats.router)
 
 
 @app.get("/api/health")
-def health():
+def health() -> dict[str, str]:
     return {"status": "ok"}

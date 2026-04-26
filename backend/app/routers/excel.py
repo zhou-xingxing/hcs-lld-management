@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.ip_allocation import IPAllocation
-from app.schemas.excel import ImportConfirmRequest, ImportResultResponse
+from app.schemas.excel import ImportConfirmRequest, ImportError, ImportResultResponse
 from app.services import excel as excel_service
 from app.utils.excel_utils import build_export, generate_template
 
@@ -18,7 +18,7 @@ def get_operator(x_operator: str = Header("system")) -> str:
 
 
 @router.get("/template")
-def download_template():
+def download_template() -> StreamingResponse:
     """下载 Excel 导入模板。"""
     buf = generate_template()
     return StreamingResponse(
@@ -32,7 +32,7 @@ def download_template():
 async def preview_import(
     file: UploadFile,
     db: Session = Depends(get_db),
-):
+) -> dict[str, Any]:
     """上传 Excel 文件并预览导入结果。"""
     if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="仅支持 .xlsx / .xls 文件")
@@ -46,10 +46,15 @@ async def preview_import(
 def confirm_import(
     data: ImportConfirmRequest,
     db: Session = Depends(get_db),
-):
+) -> ImportResultResponse:
     """确认执行导入预览数据。"""
     result = excel_service.confirm_import(data.preview_id, data.operator, db)
-    return result
+    return ImportResultResponse(
+        success=result["success"],
+        imported_count=result["imported_count"],
+        error_count=result["error_count"],
+        errors=[ImportError(**e) for e in result["errors"]],
+    )
 
 
 @router.get("/export")
@@ -57,7 +62,7 @@ def export_excel(
     region_id: Optional[str] = Query(None),
     plane_type_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-):
+) -> StreamingResponse:
     """导出 IP 分配数据到 Excel。"""
     query = db.query(IPAllocation)
     if region_id:
