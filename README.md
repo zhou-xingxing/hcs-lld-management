@@ -228,20 +228,9 @@ python -m pytest tests/test_regions.py::test_create_region -v
 
 启动后端后访问 http://localhost:8000/docs 即可查看交互式 API 文档（Swagger UI），支持在线测试所有 API。
 
-## 技术栈一览
+## 技术栈
 
-| 类别 | 技术 |
-|---|---|
-| 后端框架 | Python FastAPI |
-| 数据库 | SQLite (通过 SQLAlchemy ORM) |
-| 数据库迁移 | Alembic |
-| Excel 处理 | openpyxl |
-| IP 处理 | Python ipaddress 标准库 |
-| 前端框架 | Vue 3 (Composition API) |
-| 前端构建 | Vite |
-| UI 组件库 | Element Plus (中文语言包) |
-| 状态管理 | Pinia |
-| HTTP 客户端 | Axios |
+详见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 第 3 节「技术选型」。
 
 ## 使用流程
 
@@ -255,166 +244,14 @@ python -m pytest tests/test_regions.py::test_create_region -v
 
 ## Docker 部署
 
-### 环境要求
-
-- Docker >= 24.0
-- Docker Compose >= 2.0（使用 docker-compose.yml 时）
-
-### 方式一：Docker Compose（一键部署）
-
 ```bash
-cd /Users/maozexu/HCS_LLD_Management
-
-# 构建并启动所有服务
+# 一键部署（推荐）
 docker compose up -d
-
-# 查看日志
 docker compose logs -f
-
-# 停止服务
-docker compose down
 ```
 
-数据库文件存储在 Docker volume `hcs-lld-data` 中，可通过以下命令查看：
+更详细的部署说明（架构图、分别构建、配置要点）见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 第 9 节「部署说明」。
 
-```bash
-docker volume inspect hcs-lld-data
-```
+## CI/CD
 
-### 方式二：分别部署（前后端独立容器）
-
-#### 后端单独部署
-
-```bash
-cd /Users/maozexu/HCS_LLD_Management
-
-# 构建镜像
-docker build -t hcs-lld-backend -f backend/Dockerfile backend/
-
-# 运行容器（使用 bind mount 持久化数据库）
-docker run -d \
-  --name hcs-lld-backend \
-  -p 8000:8000 \
-  -e DATABASE_URL=sqlite:////app/data/hcs_lld.db \
-  -v $(pwd)/data:/app/data \
-  hcs-lld-backend
-
-# 或使用 Docker volume
-docker run -d \
-  --name hcs-lld-backend \
-  -p 8000:8000 \
-  -v hcs-lld-data:/app/data \
-  hcs-lld-backend
-
-# 验证
-curl http://localhost:8000/api/health
-curl http://localhost:8000/docs
-```
-
-#### 前端单独部署
-
-```bash
-cd /Users/maozexu/HCS_LLD_Management
-
-# 构建镜像
-docker build -t hcs-lld-frontend \
-  --build-arg VITE_API_BASE_URL=/api \
-  -f frontend/Dockerfile frontend/
-
-# 运行容器，BACKEND_URL 指向后端服务地址
-docker run -d \
-  --name hcs-lld-frontend \
-  -p 80:80 \
-  -e BACKEND_URL=http://你的后端IP:8000 \
-  hcs-lld-frontend
-
-# 验证
-curl http://localhost/api/health
-```
-
-### Docker 文件说明
-
-| 文件 | 说明 |
-|---|---|
-| `backend/Dockerfile` | 多阶段构建：builder 阶段安装 Python 依赖，runtime 阶段运行 uvicorn |
-| `frontend/Dockerfile` | 多阶段构建：builder 阶段编译 Vue 3 前端，runtime 阶段用 Nginx 提供静态文件 |
-| `frontend/nginx.conf` | Nginx 配置，将 `/api/` 请求代理到后端，支持 SPA 路由和静态资源缓存 |
-| `docker-compose.yml` | 编排文件，定义 backend + frontend 两个服务 |
-
-### Docker 配置要点
-
-1. **数据库持久化**：`DATABASE_URL=sqlite:////app/data/hcs_lld.db`，通过 volume 或 bind mount 将 `/app/data` 映射到宿主机
-2. **前端代理**：Nginx 在运行时通过 `BACKEND_URL` 环境变量配置后端地址，使用 `envsubst` 在容器启动时替换
-3. **构建参数**：前端构建时可通过 `VITE_API_BASE_URL` 指定 API 基础路径（默认 `/api`）
-4. **健康检查**：后端配置了 `HEALTHCHECK`，docker-compose 中前端等待后端健康后再启动
-
-## CI/CD 持续集成与部署
-
-### 流水线概览
-
-项目使用 **GitHub Actions** 实现自动化 CI/CD，配置文件位于 `.github/workflows/ci.yml`。
-
-```
-PR → 自动运行测试 + 前端编译检查
-main 推送 → 自动运行测试 + 构建 Docker 镜像并推送到 ghcr.io
-v* 标签推送 → 同上 + 额外打版本标签
-```
-
-### CI 触发规则
-
-| 操作 | 触发 |
-|---|---|
-| 创建 PR 到 `main` 分支 | ✅ 自动运行「测试后端」+「编译前端」 |
-| 推送代码到 `main` 分支 | ✅ 自动运行测试、编译前端、构建 Docker 镜像并推送 |
-| 推送 `v1.0.0` 等版本标签 | ✅ 同上，额外生成 `1.0.0` 版本标签 |
-
-### 镜像产物
-
-Docker 镜像自动推送至 **GitHub Container Registry (ghcr.io)**:
-
-| 镜像名称 | 标签示例 |
-|---|---|
-| `ghcr.io/{你的GitHub用户名}/hcs-lld-backend` | `latest`, `sha-a1b2c3d`, `1.0.0` |
-| `ghcr.io/{你的GitHub用户名}/hcs-lld-frontend` | `latest`, `sha-a1b2c3d`, `1.0.0` |
-
-### 使用流程
-
-首次使用需要初始化 Git 仓库并推送到 GitHub：
-
-```bash
-cd /Users/maozexu/HCS_LLD_Management
-
-# 初始化仓库
-git init
-git add .
-git commit -m "初始提交：HCS LLD 管理系统 MVP"
-
-# 关联远程仓库（替换为你的仓库地址）
-git remote add origin https://github.com/你的用户名/hcs-lld-management.git
-
-# 推送到 main 分支
-git push -u origin main
-```
-
-之后每次推送代码或创建 PR，GitHub Actions 会自动触发 CI/CD 流水线。
-
-### 查看 CI 状态
-
-1. 在 GitHub 仓库页面点击 **Actions** 标签
-2. 可看到所有 workflow 运行记录
-3. 点击某次运行可查看详细的 Job 日志
-
-### 拉取并使用构建好的镜像
-
-```bash
-# 拉取后端镜像
-docker pull ghcr.io/你的用户名/hcs-lld-backend:latest
-
-# 运行
-docker run -d -p 8000:8000 \
-  -v hcs-lld-data:/app/data \
-  ghcr.io/你的用户名/hcs-lld-backend:latest
-
-# 验证
-curl http://localhost:8000/api/health
-```
+详见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 第 10 节「CI/CD 设计」。
