@@ -208,9 +208,11 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 | id | String(36) UUID | PK | UUID v4 |
 | region_id | String(36) | FK -> regions.id, CASCADE | 所属 Region |
 | plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE | 启用的平面类型 |
-| | | UNIQUE(region_id, plane_type_id) | 防止重复启用 |
+| cidr | String(43) | NULLABLE | CIDR 地址段，如 "10.0.0.0/22" |
+| parent_id | String(36) | FK -> self.id, CASCADE, NULLABLE | 父平面节点 ID，NULL 表示根节点 |
+| created_at | DateTime | NOT NULL | 创建时间 |
 
-多对多关联表，表示某个 Region 启用了哪些网络平面。
+多对多关联表，同时作为树状结构节点，支持最多 3 级嵌套。`parent_id` 自引用实现层级关系，`cidr` 定义该平面节点的地址段范围。子平面的 CIDR 必须是父平面的子网段。
 
 #### ip_allocations
 
@@ -218,7 +220,8 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
 | region_id | String(36) | FK -> regions.id, CASCADE, INDEX | 所属 Region（反范式化） |
-| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE, INDEX | 所属网络平面 |
+| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE, INDEX | 所属网络平面类型 |
+| plane_id | String(36) | FK -> region_network_planes.id, CASCADE, INDEX, NULLABLE | 归属的平面节点（精确到树中具体节点） |
 | ip_range | String(43) | NOT NULL | CIDR 表示法，如 "10.0.0.0/24" |
 | vlan_id | Integer | NULLABLE | VLAN 标识 |
 | gateway | String(39) | NULLABLE | 网关地址 |
@@ -228,7 +231,7 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-**设计决策**：`region_id` 在此表反范式化存储。虽然 `ip_range` 通过 `plane_type_id` 已间接关联 Region，但直接存储 `region_id` 可避免频繁 JOIN，加速 CIDR 查找。应用层保证 `(region_id, plane_type_id)` 必须是有效的 `RegionNetworkPlane`。
+**设计决策**：`region_id` 在此表反范式化存储。虽然 `ip_range` 通过 `plane_type_id` 已间接关联 Region，但直接存储 `region_id` 可避免频繁 JOIN，加速 CIDR 查找。`plane_id` 精确关联到 `RegionNetworkPlane` 树中的具体节点，用于平面级 CIDR 范围校验和重叠检测。应用层保证 `(region_id, plane_type_id)` 必须是有效的 `RegionNetworkPlane`。`plane_id` 可空，兼容历史数据。
 
 #### change_logs
 
@@ -294,7 +297,8 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 | GET | `/api/health` | 健康检查 |
 | GET/POST | `/api/regions` | 列表/创建 Region |
 | GET/PUT/DELETE | `/api/regions/{id}` | Region 详情/更新/删除 |
-| GET/POST/DELETE | `/api/regions/{id}/planes` | 启用的网络平面管理 |
+| GET/POST | `/api/regions/{id}/planes` | 启用的网络平面管理（返回树形结构） |
+| POST | `/api/regions/{id}/planes/{pid}/children` | 创建子网络平面 |
 | GET/POST | `/api/regions/{region_id}/allocations` | IP 分配列表/创建 |
 | GET/PUT/DELETE | `/api/allocations/{id}` | IP 分配详情/更新/删除 |
 | GET/POST | `/api/network-plane-types` | 列表/创建网络平面类型 |
