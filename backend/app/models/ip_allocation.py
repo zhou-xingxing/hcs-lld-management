@@ -23,6 +23,11 @@ class IPAllocation(Base):
     plane_type_id = Column(
         String(36), ForeignKey("network_plane_types.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # 归属的平面节点（精确到树中具体节点，而非仅 plane_type）
+    # nullable=True 兼容旧数据；新创建的分配必须关联到具体平面节点
+    plane_id = Column(
+        String(36), ForeignKey("region_network_planes.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     ip_range = Column(String(43), nullable=False)
     vlan_id = Column(Integer, nullable=True)
     gateway = Column(String(39), nullable=True)
@@ -35,3 +40,4 @@ class IPAllocation(Base):
     # relationships
     region = relationship("Region", back_populates="allocations")
     plane_type = relationship("NetworkPlaneType", back_populates="allocations")
+    plane = relationship("RegionNetworkPlane", back_populates="allocations")

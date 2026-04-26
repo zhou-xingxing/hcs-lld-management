@@ -17,12 +17,15 @@ def list_allocations(
     db: Session,
     region_id: str,
     plane_type_id: Optional[str] = None,
+    plane_id: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
 ) -> tuple[list[dict], int]:
     query = db.query(IPAllocation).filter(IPAllocation.region_id == region_id)
     if plane_type_id:
         query = query.filter(IPAllocation.plane_type_id == plane_type_id)
+    if plane_id:
+        query = query.filter(IPAllocation.plane_id == plane_id)
     total = query.count()
     items = query.order_by(IPAllocation.created_at.desc()).offset(skip).limit(limit).all()
     result = []
@@ -40,6 +43,7 @@ def _allocation_to_dict(a: IPAllocation) -> dict:
         "id": a.id,
         "region_id": a.region_id,
         "plane_type_id": a.plane_type_id,
+        "plane_id": a.plane_id,
         "region_name": a.region.name if a.region else "",
         "plane_type_name": a.plane_type.name if a.plane_type else "",
         "ip_range": a.ip_range,
@@ -53,7 +57,28 @@ def _allocation_to_dict(a: IPAllocation) -> dict:
     }
 
 
-def _get_allocated_cidrs(db: Session, region_id: str, plane_type_id: str) -> list[str]:
+def _get_allocated_cidrs_in_plane(db: Session, plane_id: str) -> list[str]:
+    """查询指定平面节点下已有的 IP 分配 CIDR 列表。"""
+    results = (
+        db.query(IPAllocation.ip_range)
+        .filter(IPAllocation.plane_id == plane_id)
+        .all()
+    )
+    return [r[0] for r in results]
+
+
+def _get_child_plane_cidrs(db: Session, plane_id: str) -> list[str]:
+    """查询指定平面的直接子平面 CIDR 列表。"""
+    children = (
+        db.query(RegionNetworkPlane.cidr)
+        .filter(RegionNetworkPlane.parent_id == plane_id)
+        .all()
+    )
+    return [c[0] for c in children if c[0]]
+
+
+def _get_legacy_allocated_cidrs(db: Session, region_id: str, plane_type_id: str) -> list[str]:
+    """[兼容] 按 (region_id, plane_type_id) 查询已有 CIDR，用于无 plane_id 的旧数据。"""
     results = (
         db.query(IPAllocation.ip_range)
         .filter(
@@ -66,6 +91,7 @@ def _get_allocated_cidrs(db: Session, region_id: str, plane_type_id: str) -> lis
 
 
 def _validate_plane_association(db: Session, region_id: str, plane_type_id: str) -> bool:
+    """校验 plane_type 是否已在 Region 中启用（兼容旧数据，按 plane_type_id 检查）。"""
     return (
         db.query(RegionNetworkPlane)
         .filter(
@@ -80,24 +106,50 @@ def _validate_plane_association(db: Session, region_id: str, plane_type_id: str)
 def create_allocation(
     db: Session, region_id: str, data: AllocationCreate, operator: str
 ) -> IPAllocation:
-    # Validate CIDR
+    """创建 IP 分配，校验 CIDR 约束：在平面 CIDR 范围内、不与子平面 CIDR 重叠、同平面内不重叠。"""
+    # 校验 CIDR 格式
     net = parse_cidr(data.ip_range)
     if not net:
-        raise ValueError(f"Invalid CIDR notation: {data.ip_range}")
+        raise ValueError(f"无效的 CIDR 格式: {data.ip_range}")
 
-    # Validate plane belongs to region
-    if not _validate_plane_association(db, region_id, data.plane_type_id):
-        raise ValueError("Plane type is not enabled for this region")
+    # 校验：plane 存在且属于该 Region
+    plane = db.query(RegionNetworkPlane).filter(
+        RegionNetworkPlane.id == data.plane_id,
+        RegionNetworkPlane.region_id == region_id,
+        RegionNetworkPlane.plane_type_id == data.plane_type_id,
+    ).first()
+    if not plane:
+        raise ValueError("网络平面不存在或未在该 Region 启用")
+    if not plane.cidr:
+        raise ValueError("该网络平面没有 CIDR 范围，无法创建 IP 分配")
 
-    # Check overlap
-    existing = _get_allocated_cidrs(db, region_id, data.plane_type_id)
+    # 校验：IP 段必须在平面 CIDR 范围内
+    plane_net = parse_cidr(plane.cidr)
+    if plane_net:
+        subnet_check = (
+            net.subnet_of(plane_net)
+            if hasattr(net, "subnet_of")
+            else plane_net.supernet_of(net)
+        )
+        if not subnet_check:
+            raise ValueError(f"IP 段 {data.ip_range} 超出平面 CIDR {plane.cidr} 范围")
+
+    # 校验：IP 段不能与子平面的 CIDR 重叠（子平面已占用了子网段）
+    child_cidrs = _get_child_plane_cidrs(db, plane.id)
+    overlapped = find_overlapping(data.ip_range, child_cidrs)
+    if overlapped:
+        raise ValueError(f"IP 段与子网平面 CIDR 重叠: {', '.join(overlapped)}")
+
+    # 校验：同平面内 IP 段不重叠
+    existing = _get_allocated_cidrs_in_plane(db, plane.id)
     overlapped = find_overlapping(data.ip_range, existing)
     if overlapped:
-        raise ValueError(f"IP range overlaps with existing allocations: {', '.join(overlapped)}")
+        raise ValueError(f"与同平面的已有 IP 分配重叠: {', '.join(overlapped)}")
 
     allocation = IPAllocation(
         region_id=region_id,
         plane_type_id=data.plane_type_id,
+        plane_id=data.plane_id,
         ip_range=data.ip_range,
         vlan_id=data.vlan_id,
         gateway=data.gateway,
@@ -108,7 +160,6 @@ def create_allocation(
     db.add(allocation)
     db.flush()
 
-    # Get plane type name for log
     pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == data.plane_type_id).first()
     log_change(
         db,
@@ -120,6 +171,7 @@ def create_allocation(
             "ip_range": data.ip_range,
             "region_id": region_id,
             "plane_type": pt.name if pt else data.plane_type_id,
+            "plane_id": data.plane_id,
             "vlan_id": data.vlan_id,
             "status": data.status,
         }),
@@ -130,6 +182,7 @@ def create_allocation(
 def update_allocation(
     db: Session, allocation_id: str, data: AllocationUpdate, operator: str
 ) -> Optional[IPAllocation]:
+    """更新 IP 分配，如果修改了 ip_range 则重新校验 CIDR 约束。"""
     allocation = get_allocation(db, allocation_id)
     if not allocation:
         return None
@@ -138,13 +191,42 @@ def update_allocation(
     if data.ip_range is not None and data.ip_range != allocation.ip_range:
         net = parse_cidr(data.ip_range)
         if not net:
-            raise ValueError(f"Invalid CIDR notation: {data.ip_range}")
-        # Check overlap with other allocations in same region+plane
-        existing = _get_allocated_cidrs(db, allocation.region_id, allocation.plane_type_id)
-        existing = [e for e in existing if e != allocation.ip_range]
-        overlapped = find_overlapping(data.ip_range, existing)
-        if overlapped:
-            raise ValueError(f"IP range overlaps with: {', '.join(overlapped)}")
+            raise ValueError(f"无效的 CIDR 格式: {data.ip_range}")
+
+        # 如果有 plane_id，按新逻辑校验
+        if allocation.plane_id:
+            plane = db.get(RegionNetworkPlane, allocation.plane_id)
+            if plane and plane.cidr:
+                plane_net = parse_cidr(plane.cidr)
+                if plane_net:
+                    subnet_check = (
+                        net.subnet_of(plane_net)
+                        if hasattr(net, "subnet_of")
+                        else plane_net.supernet_of(net)
+                    )
+                    if not subnet_check:
+                        raise ValueError(f"IP 段 {data.ip_range} 超出平面 CIDR {plane.cidr} 范围")
+
+            # 不与子平面 CIDR 重叠
+            child_cidrs = _get_child_plane_cidrs(db, allocation.plane_id)
+            overlapped = find_overlapping(data.ip_range, child_cidrs)
+            if overlapped:
+                raise ValueError(f"IP 段与子网平面 CIDR 重叠: {', '.join(overlapped)}")
+
+            # 同平面内不重叠（排除自身）
+            existing = _get_allocated_cidrs_in_plane(db, allocation.plane_id)
+            existing = [e for e in existing if e != allocation.ip_range]
+            overlapped = find_overlapping(data.ip_range, existing)
+            if overlapped:
+                raise ValueError(f"与同平面的已有 IP 分配重叠: {', '.join(overlapped)}")
+        else:
+            # 旧数据无 plane_id，回退到按 (region_id, plane_type_id) 扫描
+            existing = _get_legacy_allocated_cidrs(db, allocation.region_id, allocation.plane_type_id)
+            existing = [e for e in existing if e != allocation.ip_range]
+            overlapped = find_overlapping(data.ip_range, existing)
+            if overlapped:
+                raise ValueError(f"IP 段与已有分配重叠: {', '.join(overlapped)}")
+
         changes.append(("ip_range", allocation.ip_range, data.ip_range))
         allocation.ip_range = data.ip_range
 
@@ -186,6 +268,7 @@ def delete_allocation(db: Session, allocation_id: str, operator: str) -> bool:
             "ip_range": allocation.ip_range,
             "region_id": allocation.region_id,
             "plane_type_id": allocation.plane_type_id,
+            "plane_id": allocation.plane_id,
         }),
     )
     db.delete(allocation)

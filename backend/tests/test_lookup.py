@@ -9,14 +9,15 @@ def _setup_data(client):
     pt = client.post(
         "/api/network-plane-types", json={"name": "管理平面"}, headers=HEADERS
     ).json()
-    client.post(
+    plane_resp = client.post(
         f"/api/regions/{r['id']}/planes",
-        json={"plane_type_id": pt["id"]},
+        json={"plane_type_id": pt["id"], "cidr": "10.0.0.0/22"},
         headers=HEADERS,
     )
+    plane_id = plane_resp.json()["id"]
     client.post(
         f"/api/regions/{r['id']}/allocations",
-        json={"plane_type_id": pt["id"], "ip_range": "10.0.0.0/24"},
+        json={"plane_type_id": pt["id"], "plane_id": plane_id, "ip_range": "10.0.0.0/24"},
         headers=HEADERS,
     )
     return r, pt

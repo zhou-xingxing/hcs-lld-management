@@ -24,8 +24,12 @@ export function fetchRegionPlanes(regionId) {
   return request.get(`/regions/${regionId}/planes`)
 }
 
-export function enableRegionPlane(regionId, planeTypeId) {
-  return request.post(`/regions/${regionId}/planes`, { plane_type_id: planeTypeId })
+export function enableRegionPlane(regionId, planeTypeId, cidr) {
+  return request.post(`/regions/${regionId}/planes`, { plane_type_id: planeTypeId, cidr })
+}
+
+export function createChildPlane(regionId, planeId, cidr) {
+  return request.post(`/regions/${regionId}/planes/${planeId}/children`, { cidr })
 }
 
 export function disableRegionPlane(regionId, planeId) {

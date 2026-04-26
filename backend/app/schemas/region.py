@@ -38,10 +38,18 @@ class RegionPlaneResponse(BaseModel):
     region_id: str
     plane_type_id: str
     plane_type_name: str
+    cidr: str | None = None
+    parent_id: str | None = None
     allocation_count: int = 0
+    children: list["RegionPlaneResponse"] = []
 
     model_config = {"from_attributes": True}
 
 
 class RegionPlaneCreate(BaseModel):
     plane_type_id: str
+    cidr: str = Field(..., max_length=43, description="CIDR 地址段，如 10.0.0.0/22")
+
+
+class ChildPlaneCreate(BaseModel):
+    cidr: str = Field(..., max_length=43, description="子网 CIDR，必须在父平面 CIDR 范围内")

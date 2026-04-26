@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.region import (
+    ChildPlaneCreate,
     RegionCreate,
     RegionDetailResponse,
     RegionPlaneCreate,
@@ -20,9 +21,10 @@ from app.services.region import (
     update_region,
 )
 from app.services.region_plane import (
+    create_child_plane,
     disable_plane_for_region,
     enable_plane_for_region,
-    get_region_planes,
+    get_region_plane_tree,
 )
 
 router = APIRouter(prefix="/api/regions", tags=["Regions"])
@@ -128,7 +130,7 @@ def list_region_planes_endpoint(region_id: str, db: Session = Depends(get_db)):
     region = get_region(db, region_id)
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
-    return get_region_planes(db, region_id)
+    return get_region_plane_tree(db, region_id)
 
 
 @router.post("/{region_id}/planes", status_code=201)
@@ -147,13 +149,48 @@ def enable_plane_endpoint(
     pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == data.plane_type_id).first()
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
-    rp = enable_plane_for_region(db, region_id, data.plane_type_id, operator)
+    try:
+        rp = enable_plane_for_region(db, region_id, data.plane_type_id, data.cidr, operator)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     db.commit()
     return {
         "id": rp.id,
         "region_id": rp.region_id,
         "plane_type_id": rp.plane_type_id,
         "plane_type_name": pt.name,
+        "cidr": rp.cidr,
+        "parent_id": rp.parent_id,
+        "children": [],
+    }
+
+
+@router.post("/{region_id}/planes/{plane_id}/children", status_code=201)
+def create_child_plane_endpoint(
+    region_id: str,
+    plane_id: str,
+    data: ChildPlaneCreate,
+    db: Session = Depends(get_db),
+    operator: str = Depends(get_operator),
+):
+    """在指定父平面下创建子网络平面。"""
+    from app.services.region import get_region
+
+    region = get_region(db, region_id)
+    if not region:
+        raise HTTPException(status_code=404, detail="Region not found")
+    try:
+        child = create_child_plane(db, region_id, plane_id, data.cidr, operator)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    db.commit()
+    return {
+        "id": child.id,
+        "region_id": child.region_id,
+        "plane_type_id": child.plane_type_id,
+        "cidr": child.cidr,
+        "parent_id": child.parent_id,
+        "children": [],
     }
 
 

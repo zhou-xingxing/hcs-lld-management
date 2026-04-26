@@ -28,13 +28,14 @@ def get_operator(x_operator: str = Header("system")) -> str:
 def list_allocations_endpoint(
     region_id: str,
     plane_type_id: Optional[str] = Query(None),
+    plane_id: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     if not get_region(db, region_id):
         raise HTTPException(status_code=404, detail="Region not found")
-    items, total = list_allocations(db, region_id, plane_type_id, skip, limit)
+    items, total = list_allocations(db, region_id, plane_type_id, plane_id, skip, limit)
     return PaginatedResponse(
         items=[AllocationResponse(**item) for item in items],
         total=total,

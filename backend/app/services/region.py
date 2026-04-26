@@ -27,52 +27,34 @@ def get_region(db: Session, region_id: str) -> Optional[Region]:
     return db.query(Region).filter(Region.id == region_id).first()
 
 
-def _get_plane_allocation_count(db: Session, region_id: str, plane_type_id: str) -> int:
-    return (
-        db.query(func.count(IPAllocation.id))
-        .filter(
-            IPAllocation.region_id == region_id,
-            IPAllocation.plane_type_id == plane_type_id,
-        )
-        .scalar()
-        or 0
-    )
-
-
 def get_region_detail(db: Session, region_id: str) -> Optional[dict]:
+    """获取 Region 详情，planes 返回树形结构。"""
+    from app.services.region_plane import get_region_plane_tree
+
     region = get_region(db, region_id)
     if not region:
         return None
-    planes = (
-        db.query(RegionNetworkPlane)
-        .filter(RegionNetworkPlane.region_id == region_id)
-        .all()
-    )
-    plane_list = []
-    for rp in planes:
-        plane_list.append(
-            {
-                "id": rp.id,
-                "region_id": rp.region_id,
-                "plane_type_id": rp.plane_type_id,
-                "plane_type_name": rp.plane_type.name if rp.plane_type else "",
-                "allocation_count": _get_plane_allocation_count(
-                    db, region_id, rp.plane_type_id
-                ),
-            }
-        )
+    plane_tree = get_region_plane_tree(db, region_id)
+
+    # 计算平面总数（扁平化树）
+    def _count_planes(nodes: list[dict]) -> int:
+        count = 0
+        for n in nodes:
+            count += 1 + _count_planes(n.get("children", []))
+        return count
+
     return {
         "id": region.id,
         "name": region.name,
         "description": region.description or "",
-        "plane_count": len(plane_list),
+        "plane_count": _count_planes(plane_tree),
         "allocation_count": (
             db.query(func.count(IPAllocation.id))
             .filter(IPAllocation.region_id == region_id)
             .scalar()
             or 0
         ),
-        "planes": plane_list,
+        "planes": plane_tree,
         "created_at": region.created_at.isoformat(),
         "updated_at": region.updated_at.isoformat(),
     }

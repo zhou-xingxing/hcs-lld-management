@@ -48,12 +48,29 @@ def seed():
             created_regions[name] = region
             print(f"  Created region: {name}")
 
-            # Enable all plane types for each region
+            # Enable all plane types for each region (with CIDR)
+            plane_cidrs = {
+                "管理平面": "10.10.0.0/16",
+                "业务平面": "172.16.0.0/16",
+                "存储平面": "192.168.10.0/24",
+                "内部通信平面": "10.20.0.0/16",
+                "BMC平面": "192.168.100.0/24",
+            }
             for pt_name, pt in plane_types.items():
-                rp = RegionNetworkPlane(region_id=region.id, plane_type_id=pt.id)
+                rp = RegionNetworkPlane(
+                    region_id=region.id,
+                    plane_type_id=pt.id,
+                    cidr=plane_cidrs.get(pt_name),
+                )
                 db.add(rp)
 
         db.flush()
+
+        # Collect created planes for plane_id mapping
+        region_planes = {
+            (rp.region_id, rp.plane_type_id): rp.id
+            for rp in db.query(RegionNetworkPlane).all()
+        }
 
         # Create sample allocations
         allocations_data = [
@@ -132,9 +149,11 @@ def seed():
         for item in allocations_data:
             region = created_regions[item["region"]]
             pt = plane_types[item["plane"]]
+            plane_key = (region.id, pt.id)
             allocation = IPAllocation(
                 region_id=region.id,
                 plane_type_id=pt.id,
+                plane_id=region_planes.get(plane_key),
                 ip_range=item["ip_range"],
                 vlan_id=item["vlan_id"],
                 gateway=item["gateway"],
