@@ -1,0 +1,16 @@
+[project]
+name = "hcs-lld-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.14.0",
+    "openpyxl>=3.1.0",
+    "python-multipart>=0.0.19",
+    "pydantic-settings>=2.7.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
