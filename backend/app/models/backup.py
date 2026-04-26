@@ -1,17 +1,13 @@
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 
 from app.database import Base
+from app.utils.time_utils import utcnow_db
 
 
 def gen_uuid() -> str:
     return str(uuid.uuid4())
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class BackupConfig(Base):
@@ -32,8 +28,8 @@ class BackupConfig(Base):
     object_prefix = Column(String(300), nullable=True)
     last_run_at = Column(DateTime, nullable=True)
     next_run_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=utcnow)
-    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow_db)
+    updated_at = Column(DateTime, nullable=False, default=utcnow_db, onupdate=utcnow_db)
 
 
 class BackupRecord(Base):
@@ -46,5 +42,5 @@ class BackupRecord(Base):
     file_size = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
     operator = Column(String(100), nullable=False, default="system")
-    started_at = Column(DateTime, nullable=False, default=utcnow)
+    started_at = Column(DateTime, nullable=False, default=utcnow_db)
     finished_at = Column(DateTime, nullable=True)

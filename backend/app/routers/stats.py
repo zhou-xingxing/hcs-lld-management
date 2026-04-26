@@ -9,6 +9,7 @@ from app.models.change_log import ChangeLog
 from app.models.ip_allocation import IPAllocation
 from app.models.network_plane_type import NetworkPlaneType
 from app.models.region import Region
+from app.utils.time_utils import format_datetime
 
 router = APIRouter(prefix="/api/stats", tags=["Stats"])
 
@@ -45,7 +46,7 @@ def get_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "action": cl.action,
                 "operator": cl.operator,
                 "summary": _build_summary(cl),
-                "created_at": cl.created_at.isoformat(),
+                "created_at": format_datetime(cl.created_at),
             }
         )
 

@@ -27,6 +27,7 @@ from app.services.region_plane import (
     enable_plane_for_region,
     get_region_plane_tree,
 )
+from app.utils.time_utils import format_datetime
 
 router = APIRouter(prefix="/api/regions", tags=["Regions"])
 
@@ -53,8 +54,8 @@ def list_regions_endpoint(
                 description=r.description or "",
                 plane_count=len(r.region_planes) if r.region_planes else 0,
                 allocation_count=len(r.allocations) if r.allocations else 0,
-                created_at=r.created_at.isoformat(),
-                updated_at=r.updated_at.isoformat(),
+                created_at=format_datetime(r.created_at),
+                updated_at=format_datetime(r.updated_at),
             )
         )
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
@@ -78,8 +79,8 @@ def create_region_endpoint(
         description=region.description or "",
         plane_count=0,
         allocation_count=0,
-        created_at=region.created_at.isoformat(),
-        updated_at=region.updated_at.isoformat(),
+        created_at=format_datetime(region.created_at),
+        updated_at=format_datetime(region.updated_at),
     )
 
 
@@ -110,8 +111,8 @@ def update_region_endpoint(
         description=region.description or "",
         plane_count=len(region.region_planes) if region.region_planes else 0,
         allocation_count=len(region.allocations) if region.allocations else 0,
-        created_at=region.created_at.isoformat(),
-        updated_at=region.updated_at.isoformat(),
+        created_at=format_datetime(region.created_at),
+        updated_at=format_datetime(region.updated_at),
     )
 
 

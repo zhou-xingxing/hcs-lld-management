@@ -21,7 +21,9 @@
             <el-tag :type="row.region_count > 0 ? 'success' : 'info'" size="small" effect="plain">{{ row.region_count }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="170" />
+        <el-table-column prop="created_at" label="创建时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="warning" link @click="showEditDialog(row)">
@@ -70,6 +72,7 @@ import { ref, onMounted } from 'vue'
 import { fetchPlaneTypes, createPlaneType, updatePlaneType, deletePlaneType } from '@/api/networkPlaneTypes'
 import { ElMessage } from 'element-plus'
 import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { formatDateTime } from '@/utils/time'
 
 const loading = ref(false)
 const items = ref([])

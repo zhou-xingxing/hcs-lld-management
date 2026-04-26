@@ -1,18 +1,14 @@
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.utils.time_utils import utcnow_db
 
 
 def gen_uuid() -> str:
     return str(uuid.uuid4())
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class IPAllocation(Base):
@@ -32,8 +28,8 @@ class IPAllocation(Base):
     subnet_mask = Column(String(15), nullable=True)
     purpose = Column(Text, nullable=True, default="")
     status = Column(String(20), nullable=False, default="active")
-    created_at = Column(DateTime, nullable=False, default=utcnow)
-    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow_db)
+    updated_at = Column(DateTime, nullable=False, default=utcnow_db, onupdate=utcnow_db)
 
     # relationships
     region = relationship("Region", back_populates="allocations")

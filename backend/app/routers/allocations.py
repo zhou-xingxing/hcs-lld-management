@@ -17,6 +17,7 @@ from app.services.allocation import (
 )
 from app.services.lookup import lookup_allocations
 from app.services.region import get_region
+from app.utils.time_utils import format_datetime
 
 router = APIRouter(tags=["Allocations"])
 
@@ -74,8 +75,8 @@ def create_allocation_endpoint(
             "subnet_mask": allocation.subnet_mask or "",
             "purpose": allocation.purpose or "",
             "status": allocation.status,
-            "created_at": allocation.created_at.isoformat(),
-            "updated_at": allocation.updated_at.isoformat(),
+            "created_at": format_datetime(allocation.created_at),
+            "updated_at": format_datetime(allocation.updated_at),
         }
     )
 
@@ -99,8 +100,8 @@ def get_allocation_endpoint(allocation_id: str, db: Session = Depends(get_db)) -
             "subnet_mask": a.subnet_mask or "",
             "purpose": a.purpose or "",
             "status": a.status,
-            "created_at": a.created_at.isoformat(),
-            "updated_at": a.updated_at.isoformat(),
+            "created_at": format_datetime(a.created_at),
+            "updated_at": format_datetime(a.updated_at),
         }
     )
 
@@ -133,8 +134,8 @@ def update_allocation_endpoint(
             "subnet_mask": allocation.subnet_mask or "",
             "purpose": allocation.purpose or "",
             "status": allocation.status,
-            "created_at": allocation.created_at.isoformat(),
-            "updated_at": allocation.updated_at.isoformat(),
+            "created_at": format_datetime(allocation.created_at),
+            "updated_at": format_datetime(allocation.updated_at),
         }
     )
 

@@ -163,6 +163,7 @@
 import { fetchBackupConfig, fetchBackupRecords, runBackup, updateBackupConfig } from '@/api/backup'
 import { Check, FolderChecked, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { formatDateTime } from '@/utils/time'
 import { computed, onMounted, reactive, ref } from 'vue'
 
 const loading = ref(false)
@@ -303,8 +304,7 @@ async function loadRecords() {
 }
 
 function formatDate(value) {
-  if (!value) return '-'
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+  return formatDateTime(value)
 }
 
 function pad2(value) {

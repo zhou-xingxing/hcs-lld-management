@@ -1,18 +1,14 @@
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, ForeignKey, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.utils.time_utils import utcnow_db
 
 
 def gen_uuid() -> str:
     return str(uuid.uuid4())
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class RegionNetworkPlane(Base):
@@ -27,7 +23,7 @@ class RegionNetworkPlane(Base):
     cidr = Column(String(43), nullable=True)
     # 父平面节点 ID，自引用 FK；nullable 表示根节点
     parent_id = Column(String(36), ForeignKey("region_network_planes.id", ondelete="CASCADE"), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow_db)
 
     # relationships
     region = relationship("Region", back_populates="region_planes")

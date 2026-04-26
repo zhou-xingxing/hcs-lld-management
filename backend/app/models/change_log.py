@@ -1,17 +1,13 @@
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Index, String, Text
 
 from app.database import Base
+from app.utils.time_utils import utcnow_db
 
 
 def gen_uuid() -> str:
     return str(uuid.uuid4())
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class ChangeLog(Base):
@@ -30,4 +26,4 @@ class ChangeLog(Base):
     new_value = Column(Text, nullable=True)
     operator = Column(String(100), nullable=False)
     comment = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow_db)

@@ -12,6 +12,7 @@ from app.models.backup import BackupConfig, BackupRecord
 from app.schemas.backup import BackupConfigResponse, BackupConfigUpdate, BackupRecordResponse
 from app.schemas.common import PaginatedResponse
 from app.services.backup import get_backup_config, list_backup_records, run_backup, update_backup_config
+from app.utils.time_utils import format_datetime
 
 router = APIRouter(prefix="/api/backup", tags=["Backup"])
 
@@ -76,9 +77,7 @@ def list_records_endpoint(
 
 
 def _format_dt(value: Optional[datetime]) -> Optional[str]:
-    if value is None:
-        return None
-    return value.isoformat()
+    return format_datetime(value)
 
 
 def _to_config_response(config: BackupConfig) -> BackupConfigResponse:
@@ -98,8 +97,8 @@ def _to_config_response(config: BackupConfig) -> BackupConfigResponse:
         object_prefix=config.object_prefix,
         last_run_at=_format_dt(config.last_run_at),
         next_run_at=_format_dt(config.next_run_at),
-        created_at=config.created_at.isoformat(),
-        updated_at=config.updated_at.isoformat(),
+        created_at=format_datetime(config.created_at),
+        updated_at=format_datetime(config.updated_at),
     )
 
 
@@ -112,6 +111,6 @@ def _to_record_response(record: BackupRecord) -> BackupRecordResponse:
         file_size=record.file_size,
         error_message=record.error_message,
         operator=record.operator,
-        started_at=record.started_at.isoformat(),
+        started_at=format_datetime(record.started_at),
         finished_at=_format_dt(record.finished_at),
     )

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.change_log import ChangeLog
 from app.schemas.change_log import ChangeLogResponse
 from app.schemas.common import PaginatedResponse
+from app.utils.time_utils import format_datetime
 
 router = APIRouter(prefix="/api/change-logs", tags=["Change Logs"])
 
@@ -54,7 +55,7 @@ def list_change_logs(
                 new_value=cl.new_value,
                 operator=cl.operator,
                 comment=cl.comment,
-                created_at=cl.created_at.isoformat(),
+                created_at=format_datetime(cl.created_at),
             )
             for cl in items
         ],

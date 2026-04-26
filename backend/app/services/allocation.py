@@ -12,6 +12,7 @@ from app.models.region_network_plane import RegionNetworkPlane
 from app.schemas.ip_allocation import AllocationCreate, AllocationUpdate
 from app.services.change_log import log_change
 from app.utils.ip_utils import find_overlapping, parse_cidr
+from app.utils.time_utils import format_datetime
 
 
 def list_allocations(
@@ -75,8 +76,8 @@ def _allocation_to_dict(a: IPAllocation) -> dict[str, Any]:
         "subnet_mask": a.subnet_mask or "",
         "purpose": a.purpose or "",
         "status": a.status,
-        "created_at": a.created_at.isoformat(),
-        "updated_at": a.updated_at.isoformat(),
+        "created_at": format_datetime(a.created_at),
+        "updated_at": format_datetime(a.updated_at),
     }
 
 

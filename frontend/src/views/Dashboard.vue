@@ -92,7 +92,9 @@
         </div>
       </template>
       <el-table :data="stats.recent_changes" stripe style="width: 100%" v-loading="loading" empty-text="暂无变更记录">
-        <el-table-column prop="created_at" label="时间" width="170" />
+        <el-table-column prop="created_at" label="时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column prop="entity_type" label="类型" width="130">
           <template #default="{ row }">
             {{ entityLabel(row.entity_type) }}
@@ -114,6 +116,7 @@
 import { ref, onMounted } from 'vue'
 import { fetchStats } from '@/api/excel'
 import { Coin, MapLocation, Monitor, Connection as ConnectionIcon, Document } from '@element-plus/icons-vue'
+import { formatDateTime } from '@/utils/time'
 
 const loading = ref(false)
 const stats = ref({

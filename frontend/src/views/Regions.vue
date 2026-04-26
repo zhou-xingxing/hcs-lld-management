@@ -24,7 +24,9 @@
           </template>
         </el-table-column>
         <el-table-column prop="allocation_count" label="IP分配数" width="120" align="center" />
-        <el-table-column prop="created_at" label="创建时间" width="170" />
+        <el-table-column prop="created_at" label="创建时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" link @click="viewRegion(row)">详情</el-button>
@@ -75,6 +77,7 @@ import { useRouter } from 'vue-router'
 import { fetchRegions, createRegion, updateRegion, deleteRegion } from '@/api/regions'
 import { ElMessage } from 'element-plus'
 import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { formatDateTime } from '@/utils/time'
 
 const router = useRouter()
 const loading = ref(false)

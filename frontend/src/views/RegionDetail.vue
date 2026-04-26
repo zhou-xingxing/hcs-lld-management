@@ -28,8 +28,8 @@
         <el-descriptions-item label="区域ID" :content-style="desContentStyle">{{ region.id }}</el-descriptions-item>
         <el-descriptions-item label="网络平面数" :content-style="desContentStyle">{{ region.plane_count }}</el-descriptions-item>
         <el-descriptions-item label="IP分配数" :content-style="desContentStyle">{{ region.allocation_count }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间" :content-style="desContentStyle">{{ region.created_at }}</el-descriptions-item>
-        <el-descriptions-item label="更新时间" :content-style="desContentStyle">{{ region.updated_at }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间" :content-style="desContentStyle">{{ formatDateTime(region.created_at) }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间" :content-style="desContentStyle">{{ formatDateTime(region.updated_at) }}</el-descriptions-item>
       </el-descriptions>
     </el-card>
 
@@ -218,6 +218,7 @@ import {
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Edit, Delete, Connection, Plus } from '@element-plus/icons-vue'
+import { formatDateTime } from '@/utils/time'
 
 const props = defineProps({ id: String })
 const router = useRouter()

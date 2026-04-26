@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -14,18 +14,10 @@ from app.exceptions import BusinessError
 from app.models.backup import BackupConfig, BackupRecord
 from app.schemas.backup import BackupConfigUpdate
 from app.services.change_log import log_change
+from app.utils.time_utils import app_timezone, to_db_datetime, to_utc, utcnow
 
 logger = logging.getLogger(__name__)
 BACKUP_FILENAME_PREFIX = "hcs_lld_data_backup"
-
-
-def utcnow() -> datetime:
-    """返回当前 UTC 时间。
-
-    SQLAlchemy 当前模型使用不带时区的 DateTime，SQLite 读取后也会
-    返回 naive datetime，因此备份服务内部统一使用 naive UTC。
-    """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def calculate_next_run(
@@ -45,25 +37,27 @@ def calculate_next_run(
         schedule_weekday: 每周备份的星期，1 表示周一，7 表示周日。
 
     Returns:
-        下一次应执行备份的 UTC 时间。
+        下一次应执行备份的 timezone-aware UTC 时间。
 
     Raises:
         BusinessError: 周期值不受支持。
     """
-    candidate = base_time.replace(hour=schedule_hour, minute=schedule_minute, second=0, microsecond=0)
+    tz = app_timezone()
+    base_local = to_utc(base_time).astimezone(tz)
+    candidate = base_local.replace(hour=schedule_hour, minute=schedule_minute, second=0, microsecond=0)
     if frequency == "daily":
-        if candidate <= base_time:
+        if candidate <= base_local:
             candidate += timedelta(days=1)
-        return candidate
+        return candidate.astimezone(to_utc(base_time).tzinfo)
     if frequency == "weekly":
         if schedule_weekday is None:
             raise BusinessError("每周备份必须选择星期")
         target_weekday = schedule_weekday - 1
-        days_ahead = (target_weekday - base_time.weekday()) % 7
+        days_ahead = (target_weekday - base_local.weekday()) % 7
         candidate += timedelta(days=days_ahead)
-        if candidate <= base_time:
+        if candidate <= base_local:
             candidate += timedelta(weeks=1)
-        return candidate
+        return candidate.astimezone(to_utc(base_time).tzinfo)
     raise BusinessError(f"Unsupported backup frequency: {frequency}")
 
 
@@ -121,7 +115,7 @@ def update_backup_config(db: Session, data: BackupConfigUpdate, operator: str) -
     config.bucket = data.bucket
     config.object_prefix = data.object_prefix
     _validate_config(config)
-    config.next_run_at = _next_run_from_config(config, utcnow()) if data.enabled else None
+    config.next_run_at = to_db_datetime(_next_run_from_config(config, utcnow())) if data.enabled else None
     db.flush()
 
     log_change(
@@ -170,7 +164,12 @@ def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -
     config = get_backup_config(db)
     _validate_config(config)
 
-    record = BackupRecord(status="running", method=config.method, operator=operator or "system", started_at=utcnow())
+    record = BackupRecord(
+        status="running",
+        method=config.method,
+        operator=operator or "system",
+        started_at=to_db_datetime(utcnow()),
+    )
     db.add(record)
     db.flush()
 
@@ -187,10 +186,10 @@ def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -
         record.status = "success"
         record.target = target
         record.file_size = file_size
-        record.finished_at = utcnow()
+        record.finished_at = to_db_datetime(utcnow())
         config.last_run_at = record.finished_at
         if config.enabled:
-            config.next_run_at = _next_run_from_config(config, record.finished_at)
+            config.next_run_at = to_db_datetime(_next_run_from_config(config, record.finished_at))
         db.flush()
 
         log_change(
@@ -205,9 +204,9 @@ def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -
     except Exception as exc:
         record.status = "failed"
         record.error_message = str(exc)
-        record.finished_at = utcnow()
+        record.finished_at = to_db_datetime(utcnow())
         if config.enabled:
-            config.next_run_at = _next_run_from_config(config, record.finished_at)
+            config.next_run_at = to_db_datetime(_next_run_from_config(config, record.finished_at))
         db.flush()
         if isinstance(exc, BusinessError):
             raise
@@ -229,9 +228,9 @@ def run_due_backup(db: Session) -> Optional[BackupRecord]:
     if not config.enabled:
         return None
     if config.next_run_at is None:
-        config.next_run_at = _next_run_from_config(config, now)
+        config.next_run_at = to_db_datetime(_next_run_from_config(config, now))
         db.flush()
-    if config.next_run_at > now:
+    if to_utc(config.next_run_at) > now:
         return None
     return run_backup(db, operator="system", scheduled=True)
 

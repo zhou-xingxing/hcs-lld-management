@@ -13,6 +13,7 @@ from app.services.network_plane_type import (
     list_plane_types,
     update_plane_type,
 )
+from app.utils.time_utils import format_datetime
 
 router = APIRouter(prefix="/api/network-plane-types", tags=["Network Plane Types"])
 
@@ -37,7 +38,7 @@ def list_plane_types_endpoint(
                 name=pt.name,
                 description=pt.description or "",
                 region_count=count_regions_for_plane_type(db, pt.id),
-                created_at=pt.created_at.isoformat(),
+                created_at=format_datetime(pt.created_at),
             )
         )
     return PaginatedResponse(items=result, total=total, skip=skip, limit=limit)
@@ -57,7 +58,7 @@ def create_plane_type_endpoint(
         name=pt.name,
         description=pt.description or "",
         region_count=0,
-        created_at=pt.created_at.isoformat(),
+        created_at=format_datetime(pt.created_at),
     )
 
 
@@ -72,7 +73,7 @@ def get_plane_type_endpoint(pt_id: str, db: Session = Depends(get_db)) -> PlaneT
         name=pt.name,
         description=pt.description or "",
         region_count=count_regions_for_plane_type(db, pt_id),
-        created_at=pt.created_at.isoformat(),
+        created_at=format_datetime(pt.created_at),
     )
 
 
@@ -93,7 +94,7 @@ def update_plane_type_endpoint(
         name=pt.name,
         description=pt.description or "",
         region_count=count_regions_for_plane_type(db, pt_id),
-        created_at=pt.created_at.isoformat(),
+        created_at=format_datetime(pt.created_at),
     )
 
 

@@ -37,7 +37,9 @@
 
     <el-card shadow="never">
       <el-table :data="items" stripe v-loading="loading" empty-text="暂无变更记录" :max-height="600">
-        <el-table-column prop="created_at" label="时间" width="170" />
+        <el-table-column prop="created_at" label="时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column prop="entity_type" label="实体类型" width="130">
           <template #default="{ row }">
             {{ entityTypeLabel(row.entity_type) }}
@@ -71,6 +73,7 @@
 import { ref, onMounted, reactive } from 'vue'
 import { fetchChangeLogs } from '@/api/excel'
 import { Search } from '@element-plus/icons-vue'
+import { formatDateTime } from '@/utils/time'
 
 const loading = ref(false)
 const items = ref([])

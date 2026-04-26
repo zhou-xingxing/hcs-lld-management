@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from threading import Lock
 from typing import Any, Optional
 
@@ -12,6 +12,7 @@ from app.models.ip_allocation import IPAllocation
 from app.services.change_log import log_change
 from app.utils.excel_utils import parse_excel
 from app.utils.ip_utils import find_overlapping, parse_cidr
+from app.utils.time_utils import utcnow
 
 # In-memory import preview cache
 _import_cache: dict[str, dict[str, Any]] = {}
@@ -34,7 +35,7 @@ def store_preview(rows: list[dict[str, Any]]) -> str:
     with _import_cache_lock:
         _import_cache[preview_id] = {
             "rows": rows,
-            "created_at": datetime.utcnow(),
+            "created_at": utcnow(),
         }
     return preview_id
 
@@ -50,7 +51,7 @@ def get_preview(preview_id: str) -> Optional[list[dict[str, Any]]]:
     """
     with _import_cache_lock:
         entry = _import_cache.get(preview_id)
-        if entry and datetime.utcnow() - entry["created_at"] < _IMPORT_TTL:
+        if entry and utcnow() - entry["created_at"] < _IMPORT_TTL:
             return entry["rows"]  # type: ignore[no-any-return]
         _import_cache.pop(preview_id, None)
         return None

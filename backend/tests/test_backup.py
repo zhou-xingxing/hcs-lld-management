@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -141,17 +141,23 @@ def test_run_due_backup_only_when_enabled_and_due(test_db, tmp_path):
 
 
 def test_calculate_next_run_daily_uses_configured_time():
-    before_time = datetime(2026, 4, 26, 1, 10)
-    after_time = datetime(2026, 4, 26, 3, 10)
+    before_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
+    after_time = datetime(2026, 4, 25, 19, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(before_time, "daily", 2, 30) == datetime(2026, 4, 26, 2, 30)
-    assert calculate_next_run(after_time, "daily", 2, 30) == datetime(2026, 4, 27, 2, 30)
+    assert calculate_next_run(before_time, "daily", 2, 30) == datetime(2026, 4, 25, 18, 30, tzinfo=timezone.utc)
+    assert calculate_next_run(after_time, "daily", 2, 30) == datetime(2026, 4, 26, 18, 30, tzinfo=timezone.utc)
 
 
 def test_calculate_next_run_weekly_uses_weekday_and_time():
-    sunday_before_time = datetime(2026, 4, 26, 1, 10)
-    sunday_after_time = datetime(2026, 4, 26, 3, 10)
+    sunday_before_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
+    sunday_after_time = datetime(2026, 4, 25, 19, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(sunday_before_time, "weekly", 2, 30, 7) == datetime(2026, 4, 26, 2, 30)
-    assert calculate_next_run(sunday_after_time, "weekly", 2, 30, 7) == datetime(2026, 5, 3, 2, 30)
-    assert calculate_next_run(sunday_after_time, "weekly", 2, 30, 1) == datetime(2026, 4, 27, 2, 30)
+    assert calculate_next_run(sunday_before_time, "weekly", 2, 30, 7) == datetime(
+        2026, 4, 25, 18, 30, tzinfo=timezone.utc
+    )
+    assert calculate_next_run(sunday_after_time, "weekly", 2, 30, 7) == datetime(
+        2026, 5, 2, 18, 30, tzinfo=timezone.utc
+    )
+    assert calculate_next_run(sunday_after_time, "weekly", 2, 30, 1) == datetime(
+        2026, 4, 26, 18, 30, tzinfo=timezone.utc
+    )
