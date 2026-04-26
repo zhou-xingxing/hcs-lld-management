@@ -1,18 +1,36 @@
 <template>
   <div>
-    <h2 class="page-title">导入 / 导出</h2>
+    <div class="page-heading">
+      <div>
+        <h2 class="page-title">导入 / 导出</h2>
+        <p class="page-desc">通过 Excel 批量导入 IP 分配数据，或按条件导出为 Excel</p>
+      </div>
+    </div>
+
     <el-card shadow="never">
-      <el-tabs v-model="activeTab">
+      <el-tabs v-model="activeTab" class="app-tabs">
         <el-tab-pane label="导入 Excel" name="import">
-          <div class="import-section">
-            <p class="section-desc">请先下载模板，按照模板格式填写数据后上传。</p>
-            <el-button type="primary" plain @click="downloadTemplate" :loading="downloading">下载模板</el-button>
+          <!-- Step 1: Download Template -->
+          <div class="step-section">
+            <div class="step-label">
+              <el-tag size="small" type="primary" round>步骤 1</el-tag>
+              <span>下载模板</span>
+            </div>
+            <p class="step-desc">请先下载模板，按照模板格式填写数据后上传。</p>
+            <el-button type="primary" plain @click="downloadTemplate" :loading="downloading">
+              <el-icon style="margin-right: 6px"><Download /></el-icon>下载导入模板
+            </el-button>
           </div>
 
           <el-divider />
 
-          <div class="import-section">
-            <h4>上传文件</h4>
+          <!-- Step 2: Upload -->
+          <div class="step-section">
+            <div class="step-label">
+              <el-tag size="small" type="primary" round>步骤 2</el-tag>
+              <span>上传文件</span>
+            </div>
+            <p class="step-desc">选择填写好的 Excel 文件进行预览。</p>
             <el-upload
               ref="uploadRef"
               action="#"
@@ -21,24 +39,37 @@
               :limit="1"
               accept=".xlsx,.xls"
               :on-change="onFileChange"
+              class="upload-area"
             >
               <template #trigger>
-                <el-button type="primary">选择文件</el-button>
+                <el-button type="primary">
+                  <el-icon style="margin-right: 6px"><Upload /></el-icon>选择文件
+                </el-button>
               </template>
-              <el-button style="margin-left: 10px" type="success" @click="previewUpload" :loading="previewLoading" :disabled="!selectedFile">预览</el-button>
-              <template #tip><div class="el-upload__tip">仅支持 .xlsx / .xls 文件</div></template>
+              <el-button style="margin-left: 10px" type="success" @click="previewUpload" :loading="previewLoading" :disabled="!selectedFile">
+                预览
+              </el-button>
+              <template #tip>
+                <div class="upload-tip">仅支持 .xlsx / .xls 文件</div>
+              </template>
             </el-upload>
           </div>
 
-          <div v-if="previewData" class="preview-section">
+          <!-- Preview -->
+          <div v-if="previewData" class="step-section">
+            <div class="step-label">
+              <el-tag size="small" type="primary" round>步骤 3</el-tag>
+              <span>确认导入</span>
+            </div>
             <el-alert
               :title="`共 ${previewData.total_rows} 行，有效 ${previewData.valid_rows} 行，错误 ${previewData.error_rows.length} 行`"
               :type="previewData.error_rows.length > 0 ? 'warning' : 'success'"
               show-icon
               style="margin-bottom: 16px"
+              :closable="false"
             />
-            <div v-if="previewData.error_rows.length > 0">
-              <h4>错误详情：</h4>
+            <div v-if="previewData.error_rows.length > 0" style="margin-bottom: 16px">
+              <h4 class="sub-title">错误详情：</h4>
               <el-table :data="previewData.error_rows" stripe size="small">
                 <el-table-column prop="row" label="行号" width="80" />
                 <el-table-column prop="errors" label="错误" min-width="300">
@@ -47,10 +78,9 @@
                   </template>
                 </el-table-column>
               </el-table>
-              <el-divider />
             </div>
-            <h4>数据预览（仅显示有效行）：</h4>
-            <div style="max-height: 400px; overflow-y: auto">
+            <h4 class="sub-title">数据预览（仅显示有效行）：</h4>
+            <div style="max-height: 400px; overflow-y: auto; margin-bottom: 16px">
               <el-table :data="previewData.rows" stripe size="small">
                 <el-table-column prop="row_number" label="行" width="50" />
                 <el-table-column prop="region_name" label="区域" width="120" />
@@ -60,11 +90,12 @@
                 <el-table-column prop="status" label="状态" width="80" />
               </el-table>
             </div>
-            <el-button type="success" style="margin-top: 16px" @click="confirmImport" :loading="importing" :disabled="previewData.valid_rows === 0">
+            <el-button type="success" size="large" @click="confirmImport" :loading="importing" :disabled="previewData.valid_rows === 0">
               确认导入 ({{ previewData.valid_rows }} 条)
             </el-button>
           </div>
 
+          <!-- Import Result -->
           <el-result v-if="importResult" icon="success" :title="`导入完成`" :sub-title="`成功 ${importResult.imported_count} 条，失败 ${importResult.error_count} 条`">
             <template #extra>
               <el-button type="primary" @click="resetImport">继续导入</el-button>
@@ -73,8 +104,13 @@
         </el-tab-pane>
 
         <el-tab-pane label="导出 Excel" name="export">
-          <div class="export-section">
-            <el-form :model="exportForm" label-width="120px">
+          <div class="step-section">
+            <div class="step-label">
+              <el-tag size="small" type="success" round>导出</el-tag>
+              <span>选择过滤条件</span>
+            </div>
+            <p class="step-desc">按区域和网络平面过滤要导出的数据，留空则导出全部。</p>
+            <el-form :model="exportForm" label-width="100px" class="export-form">
               <el-form-item label="区域">
                 <el-select v-model="exportForm.region_id" placeholder="全部区域" clearable style="width: 300px">
                   <el-option v-for="r in regions" :key="r.id" :label="r.name" :value="r.id" />
@@ -86,7 +122,7 @@
                 </el-select>
               </el-form-item>
               <el-form-item>
-                <el-button type="primary" @click="handleExport" :loading="exporting">导出</el-button>
+                <el-button type="primary" @click="handleExport" :loading="exporting" :icon="Download">导出</el-button>
               </el-form-item>
             </el-form>
           </div>
@@ -103,6 +139,7 @@ import { fetchRegions } from '@/api/regions'
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
 import { ElMessage } from 'element-plus'
 import { useAppStore } from '@/stores/app'
+import { Download, Upload } from '@element-plus/icons-vue'
 
 const appStore = useAppStore()
 const activeTab = ref('import')
@@ -142,10 +179,10 @@ function onFileChange(uploadFile) {
 }
 
 async function previewUpload() {
-  if (!selectedFile) return
+  if (!selectedFile.value) return
   previewLoading.value = true
   try {
-    previewData.value = await previewImport(selectedFile)
+    previewData.value = await previewImport(selectedFile.value)
   } finally {
     previewLoading.value = false
   }
@@ -198,7 +235,51 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page-title { font-size: 20px; margin-bottom: 16px; color: #303133; }
-.import-section, .export-section, .preview-section { padding: 8px 0; }
-.section-desc { color: #606266; margin-bottom: 12px; }
+.page-heading { margin-bottom: var(--spacing-lg); }
+.page-title { font-size: var(--font-size-xl); font-weight: 700; color: var(--color-text-primary); margin: 0; }
+.page-desc { font-size: var(--font-size-sm); color: var(--color-text-tertiary); margin-top: 4px; }
+
+.step-section { padding: 4px 0; }
+
+.step-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+}
+
+.step-desc {
+  color: var(--color-text-tertiary);
+  margin-bottom: 12px;
+  font-size: var(--font-size-sm);
+}
+
+.upload-area {
+  padding: 8px 0;
+}
+
+.upload-tip {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.sub-title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+
+.export-form {
+  margin-top: 8px;
+}
+
+.app-tabs :deep(.el-tabs__item) {
+  font-size: var(--font-size-base);
+  font-weight: 500;
+}
 </style>

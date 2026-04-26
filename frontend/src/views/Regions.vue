@@ -1,24 +1,41 @@
 <template>
   <div>
-    <div class="page-header">
-      <h2 class="page-title">区域管理</h2>
-      <el-button type="primary" @click="showCreateDialog">添加区域</el-button>
+    <div class="page-heading">
+      <div>
+        <h2 class="page-title">区域管理</h2>
+        <p class="page-desc">管理所有 HCS 云平台区域，查看和配置各区域的网络平面与 IP 分配</p>
+      </div>
+      <el-button type="primary" @click="showCreateDialog" :icon="Plus">添加区域</el-button>
     </div>
 
     <el-card shadow="never">
       <el-table :data="regions" stripe v-loading="loading" empty-text="暂无区域">
-        <el-table-column prop="name" label="区域名称" min-width="160" />
+        <el-table-column prop="name" label="区域名称" min-width="160">
+          <template #default="{ row }">
+            <span class="link-text" @click="viewRegion(row)">{{ row.name }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="plane_count" label="网络平面数" width="120" align="center" />
+        <el-table-column prop="plane_count" label="网络平面数" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain" :type="row.plane_count > 0 ? 'primary' : 'info'">
+              {{ row.plane_count }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="allocation_count" label="IP分配数" width="120" align="center" />
-        <el-table-column prop="created_at" label="创建时间" width="180" />
+        <el-table-column prop="created_at" label="创建时间" width="170" />
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" link @click="viewRegion(row)">详情</el-button>
-            <el-button size="small" type="warning" link @click="showEditDialog(row)">编辑</el-button>
+            <el-button size="small" type="warning" link @click="showEditDialog(row)">
+              <el-icon style="margin-right: 3px"><Edit /></el-icon>编辑
+            </el-button>
             <el-popconfirm title="确定删除该区域？" @confirm="handleDelete(row.id)">
               <template #reference>
-                <el-button size="small" type="danger" link>删除</el-button>
+                <el-button size="small" type="danger" link>
+                  <el-icon style="margin-right: 3px"><Delete /></el-icon>删除
+                </el-button>
               </template>
             </el-popconfirm>
           </template>
@@ -35,13 +52,13 @@
       />
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑区域' : '添加区域'" width="500px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑区域' : '添加区域'" width="500px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="区域名称" prop="name">
           <el-input v-model="form.name" placeholder="例如: HCS华北-北京" maxlength="100" />
         </el-form-item>
         <el-form-item label="描述" prop="description">
-          <el-input v-model="form.description" type="textarea" :rows="3" />
+          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选描述信息" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -57,6 +74,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchRegions, createRegion, updateRegion, deleteRegion } from '@/api/regions'
 import { ElMessage } from 'element-plus'
+import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -133,6 +151,9 @@ onMounted(fetchData)
 </script>
 
 <style scoped>
-.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.page-title { font-size: 20px; color: #303133; margin: 0; }
+.page-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--spacing-lg); }
+.page-title { font-size: var(--font-size-xl); font-weight: 700; color: var(--color-text-primary); margin: 0; }
+.page-desc { font-size: var(--font-size-sm); color: var(--color-text-tertiary); margin-top: 4px; }
+.link-text { color: var(--color-primary); cursor: pointer; font-weight: 500; }
+.link-text:hover { text-decoration: underline; }
 </style>

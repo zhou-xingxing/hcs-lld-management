@@ -1,11 +1,16 @@
 <template>
   <div>
-    <h2 class="page-title">变更历史</h2>
+    <div class="page-heading">
+      <div>
+        <h2 class="page-title">变更历史</h2>
+        <p class="page-desc">所有数据操作的完整审计日志，支持多维度筛选</p>
+      </div>
+    </div>
 
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="filters" label-width="80px">
         <el-form-item label="实体类型">
-          <el-select v-model="filters.entity_type" placeholder="全部" clearable style="width: 140px">
+          <el-select v-model="filters.entity_type" placeholder="全部" clearable style="width: 150px">
             <el-option label="区域" value="region" />
             <el-option label="网络平面类型" value="network_plane_type" />
             <el-option label="区域网络平面" value="region_network_plane" />
@@ -21,10 +26,10 @@
           </el-select>
         </el-form-item>
         <el-form-item label="操作者">
-          <el-input v-model="filters.operator" style="width: 140px" clearable />
+          <el-input v-model="filters.operator" placeholder="操作者" style="width: 150px" clearable />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="fetchData">查询</el-button>
+          <el-button type="primary" @click="fetchData" :icon="Search">查询</el-button>
           <el-button @click="resetFilters">重置</el-button>
         </el-form-item>
       </el-form>
@@ -32,7 +37,7 @@
 
     <el-card shadow="never">
       <el-table :data="items" stripe v-loading="loading" empty-text="暂无变更记录" :max-height="600">
-        <el-table-column prop="created_at" label="时间" width="180" />
+        <el-table-column prop="created_at" label="时间" width="170" />
         <el-table-column prop="entity_type" label="实体类型" width="130">
           <template #default="{ row }">
             {{ entityTypeLabel(row.entity_type) }}
@@ -40,7 +45,7 @@
         </el-table-column>
         <el-table-column prop="action" label="操作" width="80">
           <template #default="{ row }">
-            <el-tag :type="actionTag(row.action)" size="small">{{ actionLabel(row.action) }}</el-tag>
+            <el-tag :type="actionTag(row.action)" size="small" effect="plain">{{ actionLabel(row.action) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="operator" label="操作者" width="100" />
@@ -65,6 +70,7 @@
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
 import { fetchChangeLogs } from '@/api/excel'
+import { Search } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const items = ref([])
@@ -119,6 +125,8 @@ onMounted(fetchData)
 </script>
 
 <style scoped>
-.page-title { font-size: 20px; margin-bottom: 16px; color: #303133; }
-.filter-card { margin-bottom: 16px; }
+.page-heading { margin-bottom: var(--spacing-lg); }
+.page-title { font-size: var(--font-size-xl); font-weight: 700; color: var(--color-text-primary); margin: 0; }
+.page-desc { font-size: var(--font-size-sm); color: var(--color-text-tertiary); margin-top: 4px; }
+.filter-card { margin-bottom: var(--spacing-md); }
 </style>

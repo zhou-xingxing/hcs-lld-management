@@ -1,33 +1,45 @@
 <template>
   <div v-loading="loading">
-    <el-button size="small" @click="$router.push('/regions')" style="margin-bottom: 16px">← 返回区域列表</el-button>
+    <div class="page-heading">
+      <div>
+        <el-button size="small" text @click="$router.push('/regions')" :icon="ArrowLeft" style="margin-bottom: 8px">返回区域列表</el-button>
+        <h2 class="page-title">{{ region.name }}</h2>
+        <p class="page-desc">区域详情与 IP 分配管理</p>
+      </div>
+      <div class="header-actions">
+        <el-button size="small" plain @click="editRegion">
+          <el-icon><Edit /></el-icon>编辑
+        </el-button>
+        <el-button size="small" plain type="danger" @click="deleteRegion">
+          <el-icon><Delete /></el-icon>删除
+        </el-button>
+      </div>
+    </div>
 
+    <!-- Region Info -->
     <el-card shadow="never" class="region-info">
       <template #header>
         <div class="card-header">
-          <span>{{ region.name }}</span>
-          <div>
-            <el-button size="small" type="warning" plain @click="editRegion">编辑</el-button>
-            <el-button size="small" type="danger" plain @click="deleteRegion">删除</el-button>
-          </div>
+          <span class="card-title">基本信息</span>
         </div>
       </template>
       <el-descriptions :column="2" border>
-        <el-descriptions-item label="描述">{{ region.description || '无' }}</el-descriptions-item>
-        <el-descriptions-item label="区域ID">{{ region.id }}</el-descriptions-item>
-        <el-descriptions-item label="网络平面数">{{ region.plane_count }}</el-descriptions-item>
-        <el-descriptions-item label="IP分配数">{{ region.allocation_count }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ region.created_at }}</el-descriptions-item>
-        <el-descriptions-item label="更新时间">{{ region.updated_at }}</el-descriptions-item>
+        <el-descriptions-item label="描述" :content-style="desContentStyle">{{ region.description || '无' }}</el-descriptions-item>
+        <el-descriptions-item label="区域ID" :content-style="desContentStyle">{{ region.id }}</el-descriptions-item>
+        <el-descriptions-item label="网络平面数" :content-style="desContentStyle">{{ region.plane_count }}</el-descriptions-item>
+        <el-descriptions-item label="IP分配数" :content-style="desContentStyle">{{ region.allocation_count }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间" :content-style="desContentStyle">{{ region.created_at }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间" :content-style="desContentStyle">{{ region.updated_at }}</el-descriptions-item>
       </el-descriptions>
     </el-card>
 
+    <!-- Network Planes -->
     <el-card shadow="never" class="section-card">
       <template #header>
         <div class="card-header">
-          <span>已启用的网络平面</span>
-          <div style="display: flex; gap: 8px">
-            <el-select v-model="newPlaneTypeId" placeholder="选择网络平面类型" size="small" style="width: 180px">
+          <span class="card-title">已启用的网络平面</span>
+          <div class="header-actions" style="gap: 8px">
+            <el-select v-model="newPlaneTypeId" placeholder="选择网络平面类型" size="small" style="width: 180px" clearable>
               <el-option
                 v-for="pt in availablePlaneTypes"
                 :key="pt.id"
@@ -39,25 +51,30 @@
           </div>
         </div>
       </template>
-      <div v-if="region.planes && region.planes.length > 0">
+      <div v-if="region.planes && region.planes.length > 0" class="plane-tags">
         <el-tag
           v-for="plane in region.planes"
           :key="plane.id"
           closable
-          style="margin: 4px"
+          size="large"
+          effect="plain"
+          type="primary"
           @close="disablePlane(plane.id)"
         >
+          <el-icon style="margin-right: 4px"><Connection /></el-icon>
           {{ plane.plane_type_name }}
+          <span class="plane-alloc-count">{{ plane.allocation_count }} 分配</span>
         </el-tag>
       </div>
-      <el-empty v-else description="尚未启用任何网络平面" />
+      <el-empty v-else description="尚未启用任何网络平面" :image-size="80" />
     </el-card>
 
+    <!-- IP Allocations -->
     <el-card shadow="never" class="section-card">
       <template #header>
         <div class="card-header">
-          <span>IP 地址分配</span>
-          <div style="display: flex; gap: 8px">
+          <span class="card-title">IP 地址分配</span>
+          <div class="header-actions" style="gap: 8px">
             <el-select v-model="filterPlaneTypeId" placeholder="全部网络平面" size="small" style="width: 180px" clearable @change="fetchAllocations">
               <el-option
                 v-for="plane in region.planes || []"
@@ -66,23 +83,23 @@
                 :value="plane.plane_type_id"
               />
             </el-select>
-            <el-button size="small" type="primary" @click="showCreateAllocation">添加分配</el-button>
+            <el-button size="small" type="primary" @click="showCreateAllocation" :icon="Plus">添加分配</el-button>
           </div>
         </div>
       </template>
       <el-table :data="allocations" stripe v-loading="allocationLoading" empty-text="暂无IP分配">
         <el-table-column prop="ip_range" label="IP地址段(CIDR)" width="160" />
         <el-table-column prop="plane_type_name" label="网络平面" width="120" />
-        <el-table-column prop="vlan_id" label="VLAN ID" width="90" />
+        <el-table-column prop="vlan_id" label="VLAN ID" width="90" align="center" />
         <el-table-column prop="gateway" label="网关" width="140" />
         <el-table-column prop="subnet_mask" label="子网掩码" width="140" />
         <el-table-column prop="purpose" label="用途" min-width="160" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+            <el-tag :type="statusTag(row.status)" size="small" effect="plain">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="warning" link @click="showEditAllocation(row)">编辑</el-button>
             <el-popconfirm title="确定删除此IP分配？" @confirm="handleDeleteAllocation(row.id)">
@@ -104,7 +121,8 @@
       />
     </el-card>
 
-    <el-dialog v-model="allocDialogVisible" :title="isEditAlloc ? '编辑IP分配' : '添加IP分配'" width="550px">
+    <!-- Allocation Dialog -->
+    <el-dialog v-model="allocDialogVisible" :title="isEditAlloc ? '编辑IP分配' : '添加IP分配'" width="550px" :close-on-click-modal="false">
       <el-form ref="allocFormRef" :model="allocForm" :rules="allocRules" label-width="120px">
         <el-form-item label="网络平面" prop="plane_type_id">
           <el-select v-model="allocForm.plane_type_id" style="width: 100%" :disabled="isEditAlloc">
@@ -115,16 +133,22 @@
           <el-input v-model="allocForm.ip_range" placeholder="例如: 10.0.0.0/24" />
         </el-form-item>
         <el-form-item label="VLAN ID" prop="vlan_id">
-          <el-input-number v-model="allocForm.vlan_id" :min="1" :max="4094" :step="1" style="width: 100%" />
+          <el-input-number v-model="allocForm.vlan_id" :min="1" :max="4094" :step="1" style="width: 100%" :controls="false" />
         </el-form-item>
-        <el-form-item label="网关" prop="gateway">
-          <el-input v-model="allocForm.gateway" placeholder="例如: 10.0.0.1" />
-        </el-form-item>
-        <el-form-item label="子网掩码" prop="subnet_mask">
-          <el-input v-model="allocForm.subnet_mask" placeholder="例如: 255.255.255.0" />
-        </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="网关" prop="gateway">
+              <el-input v-model="allocForm.gateway" placeholder="10.0.0.1" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="子网掩码" prop="subnet_mask">
+              <el-input v-model="allocForm.subnet_mask" placeholder="255.255.255.0" />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="用途" prop="purpose">
-          <el-input v-model="allocForm.purpose" type="textarea" :rows="2" />
+          <el-input v-model="allocForm.purpose" type="textarea" :rows="2" placeholder="描述此IP段的用途" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-select v-model="allocForm.status" style="width: 100%">
@@ -151,6 +175,7 @@ import {
 } from '@/api/regions'
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, Edit, Delete, Connection, Plus } from '@element-plus/icons-vue'
 
 const props = defineProps({ id: String })
 const router = useRouter()
@@ -181,6 +206,8 @@ const allocRules = {
   plane_type_id: [{ required: true, message: '请选择网络平面', trigger: 'change' }],
   ip_range: [{ required: true, message: '请输入IP地址段', trigger: 'blur' }],
 }
+
+const desContentStyle = { color: 'var(--color-text-primary)', fontSize: '13px' }
 
 function statusTag(status) {
   const map = { active: 'success', reserved: 'warning', deprecated: 'info' }
@@ -338,7 +365,36 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.region-info { margin-bottom: 16px; }
-.section-card { margin-bottom: 16px; }
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-lg);
+}
+.page-title { font-size: var(--font-size-xl); font-weight: 700; color: var(--color-text-primary); margin: 4px 0 0; }
+.page-desc { font-size: var(--font-size-sm); color: var(--color-text-tertiary); margin-top: 4px; }
+.header-actions { display: flex; gap: 8px; }
+.region-info { margin-bottom: var(--spacing-md); }
+.section-card { margin-bottom: var(--spacing-md); }
 .card-header { display: flex; align-items: center; justify-content: space-between; }
+.card-title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  position: relative;
+  padding-left: 12px;
+}
+.card-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  background: var(--color-primary);
+  border-radius: 2px;
+}
+.plane-tags { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; }
+.plane-tags .el-tag { padding: 0 12px; height: 32px; line-height: 30px; }
+.plane-alloc-count { margin-left: 6px; opacity: 0.6; font-size: 12px; }
 </style>
