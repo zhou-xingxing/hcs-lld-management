@@ -6,14 +6,19 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import allocations, change_logs, excel, network_plane_types, regions, stats
+from app.routers import allocations, backup, change_logs, excel, network_plane_types, regions, stats
+from app.services.backup_scheduler import backup_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # startup: create tables
     Base.metadata.create_all(bind=engine)
-    yield
+    backup_scheduler.start()
+    try:
+        yield
+    finally:
+        backup_scheduler.stop()
 
 
 app = FastAPI(
@@ -39,6 +44,7 @@ app.include_router(allocations.router)
 app.include_router(excel.router)
 app.include_router(change_logs.router)
 app.include_router(stats.router)
+app.include_router(backup.router)
 
 
 @app.get("/api/health")

@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Region, NetworkPlaneType, RegionNetworkPlane, IPAllocation, ChangeLog
+from app.models import BackupConfig, BackupRecord, ChangeLog, IPAllocation, NetworkPlaneType, Region, RegionNetworkPlane
 
 
 @pytest.fixture

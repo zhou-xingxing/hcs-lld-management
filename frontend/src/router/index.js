@@ -50,6 +50,12 @@ const routes = [
         component: () => import('@/views/ChangeLogs.vue'),
         meta: { title: '变更历史' },
       },
+      {
+        path: 'backup-config',
+        name: 'BackupConfig',
+        component: () => import('@/views/BackupConfig.vue'),
+        meta: { title: '备份配置' },
+      },
     ],
   },
 ]

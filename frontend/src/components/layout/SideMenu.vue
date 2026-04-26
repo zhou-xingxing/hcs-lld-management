@@ -50,6 +50,10 @@
         <el-icon><Clock /></el-icon>
         <span>变更历史</span>
       </el-menu-item>
+      <el-menu-item index="/backup-config">
+        <el-icon><Setting /></el-icon>
+        <span>备份配置</span>
+      </el-menu-item>
     </el-menu>
 
     <div class="sidebar-footer">
@@ -62,7 +66,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  DataAnalysis, Location, Connection, Search, Upload, Clock
+  DataAnalysis, Location, Connection, Search, Upload, Clock, Setting
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
