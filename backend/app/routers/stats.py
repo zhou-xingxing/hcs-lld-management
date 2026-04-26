@@ -13,17 +13,14 @@ router = APIRouter(prefix="/api/stats", tags=["Stats"])
 
 @router.get("")
 def get_stats(db: Session = Depends(get_db)):
+    """获取系统概览统计数据。"""
     total_regions = db.query(func.count(Region.id)).scalar() or 0
     total_plane_types = db.query(func.count(NetworkPlaneType.id)).scalar() or 0
     total_allocations = db.query(func.count(IPAllocation.id)).scalar() or 0
     total_change_logs = db.query(func.count(ChangeLog.id)).scalar() or 0
 
     # Allocation by status
-    status_counts = (
-        db.query(IPAllocation.status, func.count(IPAllocation.id))
-        .group_by(IPAllocation.status)
-        .all()
-    )
+    status_counts = db.query(IPAllocation.status, func.count(IPAllocation.id)).group_by(IPAllocation.status).all()
     allocation_by_status = {s: c for s, c in status_counts}
 
     # Allocation by region
@@ -36,22 +33,19 @@ def get_stats(db: Session = Depends(get_db)):
     allocation_by_region = [{"region_name": name, "count": c} for name, c in region_counts]
 
     # Recent changes
-    recent = (
-        db.query(ChangeLog)
-        .order_by(ChangeLog.created_at.desc())
-        .limit(10)
-        .all()
-    )
+    recent = db.query(ChangeLog).order_by(ChangeLog.created_at.desc()).limit(10).all()
     recent_changes = []
     for cl in recent:
-        recent_changes.append({
-            "id": cl.id,
-            "entity_type": cl.entity_type,
-            "action": cl.action,
-            "operator": cl.operator,
-            "summary": _build_summary(cl),
-            "created_at": cl.created_at.isoformat(),
-        })
+        recent_changes.append(
+            {
+                "id": cl.id,
+                "entity_type": cl.entity_type,
+                "action": cl.action,
+                "operator": cl.operator,
+                "summary": _build_summary(cl),
+                "created_at": cl.created_at.isoformat(),
+            }
+        )
 
     return {
         "total_regions": total_regions,

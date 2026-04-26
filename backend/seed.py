@@ -3,8 +3,13 @@ Seed script: populate the database with sample data for development/testing.
 Run with: python seed.py
 """
 
+import logging
+
 from app.database import SessionLocal, engine, Base
 from app.models import Region, NetworkPlaneType, RegionNetworkPlane, IPAllocation
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
 
 
 def seed():
@@ -14,7 +19,7 @@ def seed():
     try:
         # Check if already seeded
         if db.query(Region).count() > 0:
-            print("Database already has data, skipping seed.")
+            logger.info("Database already has data, skipping seed.")
             return
 
         # Create network plane types
@@ -32,7 +37,7 @@ def seed():
             db.add(pt)
             db.flush()
             plane_types[name] = pt
-            print(f"  Created plane type: {name}")
+            logger.info("  Created plane type: %s", name)
 
         # Create regions
         regions_data = [
@@ -46,7 +51,7 @@ def seed():
             db.add(region)
             db.flush()
             created_regions[name] = region
-            print(f"  Created region: {name}")
+            logger.info("  Created region: %s", name)
 
             # Enable all plane types for each region (with CIDR)
             plane_cidrs = {
@@ -164,15 +169,15 @@ def seed():
             db.add(allocation)
 
         db.commit()
-        print(f"\nSeed completed successfully!")
-        print(f"  Regions: {len(created_regions)}")
-        print(f"  Plane Types: {len(plane_types)}")
-        print(f"  Allocations: {len(allocations_data)}")
+        logger.info("\nSeed completed successfully!")
+        logger.info("  Regions: %d", len(created_regions))
+        logger.info("  Plane Types: %d", len(plane_types))
+        logger.info("  Allocations: %d", len(allocations_data))
 
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    print("Seeding database...")
+    logger.info("Seeding database...")
     seed()

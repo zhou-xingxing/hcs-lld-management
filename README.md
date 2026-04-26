@@ -55,6 +55,9 @@
 │   ├── .env                              # 环境变量
 │   ├── requirements.txt                  # Python 依赖
 │   ├── pyproject.toml                    # Python 项目配置
+│   ├── Makefile                          # make lint / make test / make check
+│   ├── run_tests.sh                      # 测试运行脚本
+│   ├── run_checks.sh                     # 代码检查脚本
 │   ├── seed.py                           # 种子数据脚本
 │   └── start.sh                          # 后端启动脚本
 │
@@ -179,7 +182,17 @@ cd backend && bash start.sh
 cd frontend && bash start.sh
 ```
 
-## 运行测试
+## 运行测试 & 代码检查
+
+### 代码检查
+
+```bash
+cd /Users/maozexu/HCS_LLD_Management/backend
+
+# ruff → black --check → mypy（自动激活 venv）
+bash run_checks.sh
+# 或: make lint
+```
 
 ### 运行全部测试
 
@@ -196,6 +209,13 @@ cd /Users/maozexu/HCS_LLD_Management/backend
 bash run_tests.sh
 ```
 
+### 完整门禁
+
+```bash
+cd /Users/maozexu/HCS_LLD_Management/backend
+make check       # lint + test 串联执行
+```
+
 ### 运行单个测试文件
 
 ```bash
@@ -210,16 +230,24 @@ source venv/bin/activate
 python -m pytest tests/test_regions.py::test_create_region -v
 ```
 
+### pre-commit 钩子（可选）
+
+```bash
+# 在项目根目录执行，提交时自动 ruff --fix + black 格式化
+pre-commit install
+```
+
 ### 测试覆盖说明
 
-共计 23 个测试用例，覆盖 3 个测试套件：
+共计 37 个测试用例，覆盖 6 个测试套件：
 
 | 测试文件 | 用例数 | 覆盖内容 |
 |---|---|---|
 | `test_health.py` | 2 | 健康检查端点 |
 | `test_regions.py` | 7 | Region 创建/列表/搜索/更新/删除/重复检查/不存在 |
-| `test_allocations.py` | 6 | IP 分配创建/重叠检测/无效CIDR/更新/删除/未启用平面 |
+| `test_allocations.py` | 7 | IP 分配 CRUD + 重叠检测 + 无效CIDR + 未启用平面 + CIDR越界 |
 | `test_lookup.py` | 5 | IP 查找/精确CIDR/重叠CIDR/无匹配/无效查询 |
+| `test_plane_tree.py` | 13 | 多级平面树 CRUD + CIDR 约束 + 级联删除 |
 | `test_excel_utils.py` | 3 | 模板生成/空数据解析/有效数据解析 |
 
 每个测试用例使用独立的内存 SQLite 数据库，互不干扰。
@@ -254,4 +282,11 @@ docker compose logs -f
 
 ## CI/CD
 
-详见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 第 10 节「CI/CD 设计」。
+CI 配置见 `.github/workflows/ci.yml`，每次 push/PR 自动执行：
+
+| Job | 内容 | 触发条件 |
+|---|---|---|
+| `lint` | ruff → black --check → mypy | 所有 push 和 PR |
+| `test-backend` | pytest tests/ -v | 所有 push 和 PR |
+| `build-frontend` | npm install → npm run build | 所有 push 和 PR |
+| `build-and-push` | Docker 构建并推送到 GHCR | main 分支 push 或 tag 推送 |

@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas.common import PaginatedResponse, MessageResponse
+from app.exceptions import BusinessError
+from app.schemas.common import PaginatedResponse
 from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeResponse, PlaneTypeUpdate
 from app.services.network_plane_type import (
     count_regions_for_plane_type,
@@ -26,6 +27,7 @@ def list_plane_types_endpoint(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
+    """查询网络平面类型列表。"""
     items, total = list_plane_types(db, skip=skip, limit=limit)
     result = []
     for pt in items:
@@ -47,6 +49,7 @@ def create_plane_type_endpoint(
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
 ):
+    """创建网络平面类型。"""
     pt = create_plane_type(db, data, operator)
     db.commit()
     return PlaneTypeResponse(
@@ -60,6 +63,7 @@ def create_plane_type_endpoint(
 
 @router.get("/{pt_id}", response_model=PlaneTypeResponse)
 def get_plane_type_endpoint(pt_id: str, db: Session = Depends(get_db)):
+    """根据 ID 获取网络平面类型详情。"""
     pt = get_plane_type(db, pt_id)
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
@@ -79,6 +83,7 @@ def update_plane_type_endpoint(
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
 ):
+    """更新网络平面类型。"""
     pt = update_plane_type(db, pt_id, data, operator)
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
@@ -98,9 +103,10 @@ def delete_plane_type_endpoint(
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
 ):
+    """删除网络平面类型。"""
     try:
         deleted = delete_plane_type(db, pt_id, operator)
-    except ValueError as e:
+    except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not deleted:
         raise HTTPException(status_code=404, detail="Plane type not found")

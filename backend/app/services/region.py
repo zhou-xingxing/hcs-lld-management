@@ -5,9 +5,9 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.exceptions import BusinessError
 from app.models.ip_allocation import IPAllocation
 from app.models.region import Region
-from app.models.region_network_plane import RegionNetworkPlane
 from app.schemas.region import RegionCreate, RegionUpdate
 from app.services.change_log import log_change
 
@@ -15,6 +15,17 @@ from app.services.change_log import log_change
 def list_regions(
     db: Session, skip: int = 0, limit: int = 100, search: Optional[str] = None
 ) -> tuple[list[Region], int]:
+    """查询 Region 列表。
+
+    Args:
+        db: 数据库会话。
+        skip: 分页偏移量。
+        limit: 每页条数。
+        search: 按名称模糊搜索（可选）。
+
+    Returns:
+        (Region 列表, 总数) 的元组。
+    """
     query = db.query(Region)
     if search:
         query = query.filter(Region.name.ilike(f"%{search}%"))
@@ -24,11 +35,28 @@ def list_regions(
 
 
 def get_region(db: Session, region_id: str) -> Optional[Region]:
+    """根据 ID 获取 Region。
+
+    Args:
+        db: 数据库会话。
+        region_id: Region ID。
+
+    Returns:
+        Region 对象，不存在时返回 None。
+    """
     return db.query(Region).filter(Region.id == region_id).first()
 
 
 def get_region_detail(db: Session, region_id: str) -> Optional[dict]:
-    """获取 Region 详情，planes 返回树形结构。"""
+    """获取 Region 详情，planes 返回树形结构。
+
+    Args:
+        db: 数据库会话。
+        region_id: Region ID。
+
+    Returns:
+        包含 Region 信息及嵌套平面树的字典，不存在时返回 None。
+    """
     from app.services.region_plane import get_region_plane_tree
 
     region = get_region(db, region_id)
@@ -36,7 +64,6 @@ def get_region_detail(db: Session, region_id: str) -> Optional[dict]:
         return None
     plane_tree = get_region_plane_tree(db, region_id)
 
-    # 计算平面总数（扁平化树）
     def _count_planes(nodes: list[dict]) -> int:
         count = 0
         for n in nodes:
@@ -49,10 +76,7 @@ def get_region_detail(db: Session, region_id: str) -> Optional[dict]:
         "description": region.description or "",
         "plane_count": _count_planes(plane_tree),
         "allocation_count": (
-            db.query(func.count(IPAllocation.id))
-            .filter(IPAllocation.region_id == region_id)
-            .scalar()
-            or 0
+            db.query(func.count(IPAllocation.id)).filter(IPAllocation.region_id == region_id).scalar() or 0
         ),
         "planes": plane_tree,
         "created_at": region.created_at.isoformat(),
@@ -61,10 +85,22 @@ def get_region_detail(db: Session, region_id: str) -> Optional[dict]:
 
 
 def create_region(db: Session, data: RegionCreate, operator: str) -> Region:
-    # Check for duplicate name
+    """创建新 Region。
+
+    Args:
+        db: 数据库会话。
+        data: 创建参数。
+        operator: 操作者名称。
+
+    Returns:
+        新创建的 Region 对象。
+
+    Raises:
+        BusinessError: 同名 Region 已存在。
+    """
     existing = db.query(Region).filter(Region.name == data.name).first()
     if existing:
-        raise ValueError(f"Region with name '{data.name}' already exists")
+        raise BusinessError(f"Region with name '{data.name}' already exists")
 
     region = Region(name=data.name, description=data.description or "")
     db.add(region)
@@ -81,6 +117,17 @@ def create_region(db: Session, data: RegionCreate, operator: str) -> Region:
 
 
 def update_region(db: Session, region_id: str, data: RegionUpdate, operator: str) -> Optional[Region]:
+    """更新 Region 信息。
+
+    Args:
+        db: 数据库会话。
+        region_id: 要更新的 Region ID。
+        data: 更新参数。
+        operator: 操作者名称。
+
+    Returns:
+        更新后的 Region 对象，不存在时返回 None。
+    """
     region = get_region(db, region_id)
     if not region:
         return None
@@ -108,6 +155,16 @@ def update_region(db: Session, region_id: str, data: RegionUpdate, operator: str
 
 
 def delete_region(db: Session, region_id: str, operator: str) -> bool:
+    """删除 Region。
+
+    Args:
+        db: 数据库会话。
+        region_id: 要删除的 Region ID。
+        operator: 操作者名称。
+
+    Returns:
+        删除成功返回 True，不存在时返回 False。
+    """
     region = get_region(db, region_id)
     if not region:
         return False

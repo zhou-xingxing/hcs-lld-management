@@ -442,38 +442,48 @@ docker run -d --name hcs-lld-frontend -p 80:80 \
               ┌───────────────┼───────────────┐
               │               │               │
      ┌────────▼──────┐ ┌─────▼──────┐ ┌──────▼─────────┐
-     │  test-backend │ │build-front │ │ build-and-push  │
+     │     lint      │ │test-backend│ │build-frontend   │
      │               │ │            │ │                 │
-     │  pytest 23 项  │ │ npm build  │ │ Docker buildx   │
-     │  SQLite 内存库  │ │ 编译检查    │ │ ghcr.io 推送    │
-     └────────┬───────┘ └─────┬──────┘ └──────┬─────────┘
+     │  ruff 检查     │ │ pytest 37 项│ │ npm build       │
+     │  black --check │ │ SQLite 内存 │ │ 编译检查         │
+     │  mypy 检查     │ │            │ │                 │
+     └───────┬───────┘ └──────┬─────┘ └──────┬─────────┘
               │               │               │
               └───────┬───────┘               │
                       │                       │
-                需要都通过                main/tag 推送时执行
+              ┌───────▼───────┐               │
+              │ build-and-push│◄──────────────┘
+              │               │
+              │ Docker buildx │
+              │ ghcr.io 推送  │
+              └───────────────┘
 ```
 
 ### 10.2 触发规则
 
 | 事件 | 触发行为 |
 |---|---|
-| PR 提交/更新到 `main` | `test-backend` + `build-frontend`（验证不推送） |
+| PR 提交/更新到 `main` | `lint` + `test-backend` + `build-frontend`（验证不推送） |
 | 推送 `main` 分支 | 全部测试 + Docker 构建并推送 latest + SHA 标签 |
 | 推送 `v*` 标签 | 全部测试 + Docker 构建并推送 version + latest + SHA 标签 |
 
 ### 10.3 工作流定义
 
-三个 Job 按需串联：
+四个 Job 按需串联：
 
-1. **test-backend** — Python 3.12, 安装依赖后执行 `pytest tests/ -v`
+1. **lint** — ruff 检查 + black --check + mypy 类型检查
+   - pip 缓存加速重复运行
+   - mypy 非阻断（允许类型问题但不阻断流程）
+
+2. **test-backend** — Python 3.12, 安装依赖后执行 `pytest tests/ -v`
    - pip 缓存加速重复运行
    - 每个测试用例独立内存 SQLite 数据库，互不干扰
 
-2. **build-frontend** — Node 20, `npm install && npm run build`
+3. **build-frontend** — Node 20, `npm install && npm run build`
    - 仅验证编译是否通过
    - MVP 阶段前端逻辑简单，不编写单元测试
 
-3. **build-and-push** — 依赖前两个 Job 成功
+4. **build-and-push** — 依赖 lint + test-backend + build-frontend 三个 Job 成功
    - 使用 Docker Buildx 构建多平台兼容镜像
    - 登录 ghcr.io（使用 GITHUB_TOKEN，无需额外 secrets）
    - Matrix 策略并行构建 backend 和 frontend 镜像

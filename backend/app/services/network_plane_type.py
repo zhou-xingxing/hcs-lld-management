@@ -5,38 +5,79 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.region_network_plane import RegionNetworkPlane
+from app.exceptions import BusinessError
 from app.models.network_plane_type import NetworkPlaneType
+from app.models.region_network_plane import RegionNetworkPlane
 from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeUpdate
 from app.services.change_log import log_change
 
 
-def list_plane_types(
-    db: Session, skip: int = 0, limit: int = 100
-) -> tuple[list[NetworkPlaneType], int]:
+def list_plane_types(db: Session, skip: int = 0, limit: int = 100) -> tuple[list[NetworkPlaneType], int]:
+    """查询网络平面类型列表。
+
+    Args:
+        db: 数据库会话。
+        skip: 分页偏移量。
+        limit: 每页条数。
+
+    Returns:
+        (平面类型列表, 总数) 的元组。
+    """
     total = db.query(NetworkPlaneType).count()
     items = db.query(NetworkPlaneType).order_by(NetworkPlaneType.created_at.asc()).offset(skip).limit(limit).all()
     return items, total
 
 
 def get_plane_type(db: Session, pt_id: str) -> Optional[NetworkPlaneType]:
+    """根据 ID 获取网络平面类型。
+
+    Args:
+        db: 数据库会话。
+        pt_id: 平面类型 ID。
+
+    Returns:
+        NetworkPlaneType 对象，不存在时返回 None。
+    """
     return db.query(NetworkPlaneType).filter(NetworkPlaneType.id == pt_id).first()
 
 
 def get_plane_type_by_name(db: Session, name: str) -> Optional[NetworkPlaneType]:
+    """根据名称获取网络平面类型。
+
+    Args:
+        db: 数据库会话。
+        name: 平面类型名称。
+
+    Returns:
+        NetworkPlaneType 对象，不存在时返回 None。
+    """
     return db.query(NetworkPlaneType).filter(NetworkPlaneType.name == name).first()
 
 
 def count_regions_for_plane_type(db: Session, pt_id: str) -> int:
-    return (
-        db.query(func.count(RegionNetworkPlane.id))
-        .filter(RegionNetworkPlane.plane_type_id == pt_id)
-        .scalar()
-        or 0
-    )
+    """统计使用了指定网络平面类型的 Region 数量。
+
+    Args:
+        db: 数据库会话。
+        pt_id: 平面类型 ID。
+
+    Returns:
+        Region 数量。
+    """
+    return db.query(func.count(RegionNetworkPlane.id)).filter(RegionNetworkPlane.plane_type_id == pt_id).scalar() or 0
 
 
 def create_plane_type(db: Session, data: PlaneTypeCreate, operator: str) -> NetworkPlaneType:
+    """创建网络平面类型。
+
+    Args:
+        db: 数据库会话。
+        data: 创建参数。
+        operator: 操作者名称。
+
+    Returns:
+        新创建的 NetworkPlaneType 对象。
+    """
     pt = NetworkPlaneType(name=data.name, description=data.description or "")
     db.add(pt)
     db.flush()
@@ -51,9 +92,18 @@ def create_plane_type(db: Session, data: PlaneTypeCreate, operator: str) -> Netw
     return pt
 
 
-def update_plane_type(
-    db: Session, pt_id: str, data: PlaneTypeUpdate, operator: str
-) -> Optional[NetworkPlaneType]:
+def update_plane_type(db: Session, pt_id: str, data: PlaneTypeUpdate, operator: str) -> Optional[NetworkPlaneType]:
+    """更新网络平面类型。
+
+    Args:
+        db: 数据库会话。
+        pt_id: 要更新的平面类型 ID。
+        data: 更新参数。
+        operator: 操作者名称。
+
+    Returns:
+        更新后的 NetworkPlaneType 对象，不存在时返回 None。
+    """
     pt = get_plane_type(db, pt_id)
     if not pt:
         return None
@@ -81,12 +131,27 @@ def update_plane_type(
 
 
 def delete_plane_type(db: Session, pt_id: str, operator: str) -> bool:
+    """删除网络平面类型。
+
+    如果该类型已被 Region 使用则拒绝删除。
+
+    Args:
+        db: 数据库会话。
+        pt_id: 要删除的平面类型 ID。
+        operator: 操作者名称。
+
+    Returns:
+        删除成功返回 True，不存在时返回 False。
+
+    Raises:
+        BusinessError: 平面类型正在被 Region 使用中。
+    """
     pt = get_plane_type(db, pt_id)
     if not pt:
         return False
     region_count = count_regions_for_plane_type(db, pt_id)
     if region_count > 0:
-        raise ValueError(f"Cannot delete plane type in use by {region_count} region(s)")
+        raise BusinessError(f"Cannot delete plane type in use by {region_count} region(s)")
     log_change(
         db,
         entity_type="network_plane_type",

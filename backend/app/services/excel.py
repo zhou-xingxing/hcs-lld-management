@@ -20,6 +20,16 @@ _IMPORT_TTL = timedelta(minutes=30)
 
 
 def store_preview(rows: list[dict]) -> str:
+    """存储导入预览数据到内存缓存。
+
+    数据在缓存中保留 _IMPORT_TTL（30 分钟），超时后自动失效。
+
+    Args:
+        rows: 解析后的行数据列表。
+
+    Returns:
+        预览数据的唯一标识 ID（UUID4 字符串）。
+    """
     preview_id = str(uuid.uuid4())
     with _import_cache_lock:
         _import_cache[preview_id] = {
@@ -30,6 +40,14 @@ def store_preview(rows: list[dict]) -> str:
 
 
 def get_preview(preview_id: str) -> Optional[list[dict]]:
+    """从内存缓存中获取导入预览数据。
+
+    Args:
+        preview_id: 预览数据 ID。
+
+    Returns:
+        预览的行数据列表，已过期或不存在时返回 None。
+    """
     with _import_cache_lock:
         entry = _import_cache.get(preview_id)
         if entry and datetime.utcnow() - entry["created_at"] < _IMPORT_TTL:
@@ -39,6 +57,19 @@ def get_preview(preview_id: str) -> Optional[list[dict]]:
 
 
 def preview_import(file_bytes: bytes, db: Session) -> dict:
+    """解析导入文件并校验数据，返回预览结果。
+
+    校验内容：Region 和网络平面类型是否存在、是否已启用、
+    CIDR 格式、状态值是否合法。
+
+    Args:
+        file_bytes: Excel 文件的二进制内容。
+        db: 数据库会话。
+
+    Returns:
+        包含 preview_id、total_rows、valid_rows、error_rows 及
+        每行详细数据的预览结果字典。
+    """
     from app.models.network_plane_type import NetworkPlaneType
     from app.models.region import Region
     from app.models.region_network_plane import RegionNetworkPlane
@@ -50,10 +81,7 @@ def preview_import(file_bytes: bytes, db: Session) -> dict:
     # Preload lookup data
     all_regions = {r.name: r.id for r in db.query(Region).all()}
     all_plane_types = {pt.name: pt.id for pt in db.query(NetworkPlaneType).all()}
-    enabled_planes = {
-        (rp.region_id, rp.plane_type_id)
-        for rp in db.query(RegionNetworkPlane).all()
-    }
+    enabled_planes = {(rp.region_id, rp.plane_type_id) for rp in db.query(RegionNetworkPlane).all()}
 
     for row in parsed_rows:
         row_errors = []
@@ -82,11 +110,13 @@ def preview_import(file_bytes: bytes, db: Session) -> dict:
         if row_errors:
             error_rows.append({"row": row["row_number"], "errors": row_errors})
         else:
-            valid_rows.append({
-                **row,
-                "_region_id": region_id,
-                "_plane_type_id": plane_type_id,
-            })
+            valid_rows.append(
+                {
+                    **row,
+                    "_region_id": region_id,
+                    "_plane_type_id": plane_type_id,
+                }
+            )
 
     preview_id = store_preview(valid_rows)
 
@@ -113,9 +143,27 @@ def preview_import(file_bytes: bytes, db: Session) -> dict:
 
 
 def confirm_import(preview_id: str, operator: str, db: Session) -> dict:
+    """确认执行导入，将预览数据写入数据库。
+
+    逐行写入，每行都会与已有分配做重叠检测。
+    已过期的预览数据会被拒绝导入。
+
+    Args:
+        preview_id: 预览数据 ID。
+        operator: 操作者名称。
+        db: 数据库会话。
+
+    Returns:
+        包含 success、imported_count、error_count、errors 的导入结果字典。
+    """
     rows = get_preview(preview_id)
     if not rows:
-        return {"success": False, "imported_count": 0, "error_count": 0, "errors": [{"row": 0, "errors": ["预览数据已过期，请重新上传"]}]}
+        return {
+            "success": False,
+            "imported_count": 0,
+            "error_count": 0,
+            "errors": [{"row": 0, "errors": ["预览数据已过期，请重新上传"]}],
+        }
 
     imported = 0
     errors = []
@@ -125,10 +173,12 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict:
             # Check overlap against existing allocations in the same region+plane
             existing_cidrs = [
                 r[0]
-                for r in db.query(IPAllocation.ip_range).filter(
+                for r in db.query(IPAllocation.ip_range)
+                .filter(
                     IPAllocation.region_id == row["_region_id"],
                     IPAllocation.plane_type_id == row["_plane_type_id"],
-                ).all()
+                )
+                .all()
             ]
             overlapped = find_overlapping(row["ip_range"], existing_cidrs)
             if overlapped:
@@ -154,11 +204,13 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict:
                 entity_id=allocation.id,
                 action="import",
                 operator=operator,
-                new_value=json.dumps({
-                    "ip_range": row["ip_range"],
-                    "region_id": row["_region_id"],
-                    "plane_type_id": row["_plane_type_id"],
-                }),
+                new_value=json.dumps(
+                    {
+                        "ip_range": row["ip_range"],
+                        "region_id": row["_region_id"],
+                        "plane_type_id": row["_plane_type_id"],
+                    }
+                ),
                 comment="Excel批量导入",
             )
             imported += 1

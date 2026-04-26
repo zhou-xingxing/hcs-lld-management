@@ -22,14 +22,24 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # 数据库迁移
 alembic upgrade head
 
+# 代码检查（ruff → black → mypy）
+make lint
+# 或: bash run_checks.sh
+
 # 测试
-python -m pytest tests/ -v
-python -m pytest tests/test_regions.py -v
-python -m pytest tests/test_regions.py::test_create_region -v
+make test
 # 或: bash run_tests.sh
+# 或: python -m pytest tests/ -v -k "region"
+python -m pytest tests/test_regions.py::test_create_region -v
+
+# 完整门禁（lint + test）
+make check
 
 # 种子数据
 python seed.py
+
+# pre-commit hooks（可选，提交时自动格式化）
+# pre-commit install
 ```
 
 首次运行：
@@ -82,8 +92,16 @@ routers/  →  services/  →  models/
 ### 测试
 
 - 每个测试独立内存 SQLite（`StaticPool`），`conftest.py` 中 override `get_db`
-- 共 23 个测试，5 个文件：health、regions、allocations、lookup、excel utils
+- 当前共 30+ 个测试，5 个文件：health、regions、allocations、lookup、excel utils、plane_tree
 - 前端无测试，CI 仅验证 `npm run build`
+
+### CI/CD
+
+- 见 `.github/workflows/ci.yml`，4 个并行 job：
+  - `lint`：ruff → black --check → mypy
+  - `test-backend`：pytest
+  - `build-frontend`：npm install → npm run build
+  - `build-and-push`：依赖前三个通过后，构建并推送 Docker 镜像到 GHCR
 
 ### 前端
 

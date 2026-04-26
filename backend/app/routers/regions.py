@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.exceptions import BusinessError
+from app.schemas.common import PaginatedResponse
 from app.schemas.region import (
     ChildPlaneCreate,
     RegionCreate,
@@ -12,7 +14,6 @@ from app.schemas.region import (
     RegionResponse,
     RegionUpdate,
 )
-from app.schemas.common import PaginatedResponse
 from app.services.region import (
     create_region,
     delete_region,
@@ -41,6 +42,7 @@ def list_regions_endpoint(
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
+    """查询 Region 列表。"""
     regions, total = list_regions(db, skip=skip, limit=limit, search=search)
     items = []
     for r in regions:
@@ -64,9 +66,10 @@ def create_region_endpoint(
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
 ):
+    """创建新 Region。"""
     try:
         region = create_region(db, data, operator)
-    except ValueError as e:
+    except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     db.commit()
     return RegionResponse(
@@ -82,6 +85,7 @@ def create_region_endpoint(
 
 @router.get("/{region_id}", response_model=RegionDetailResponse)
 def get_region_endpoint(region_id: str, db: Session = Depends(get_db)):
+    """获取 Region 详情（含网络平面树形结构）。"""
     detail = get_region_detail(db, region_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Region not found")
@@ -95,6 +99,7 @@ def update_region_endpoint(
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
 ):
+    """更新 Region 信息。"""
     region = update_region(db, region_id, data, operator)
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
@@ -116,6 +121,7 @@ def delete_region_endpoint(
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
 ):
+    """删除 Region。"""
     deleted = delete_region(db, region_id, operator)
     if not deleted:
         raise HTTPException(status_code=404, detail="Region not found")
@@ -125,6 +131,7 @@ def delete_region_endpoint(
 # Region-Plan association endpoints
 @router.get("/{region_id}/planes")
 def list_region_planes_endpoint(region_id: str, db: Session = Depends(get_db)):
+    """查询 Region 下所有网络平面的树形结构。"""
     from app.services.region import get_region
 
     region = get_region(db, region_id)
@@ -140,6 +147,7 @@ def enable_plane_endpoint(
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
 ):
+    """为 Region 启用根级网络平面。"""
     from app.models.network_plane_type import NetworkPlaneType
     from app.services.region import get_region
 
@@ -151,7 +159,7 @@ def enable_plane_endpoint(
         raise HTTPException(status_code=404, detail="Plane type not found")
     try:
         rp = enable_plane_for_region(db, region_id, data.plane_type_id, data.cidr, operator)
-    except ValueError as e:
+    except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     db.commit()
     return {
@@ -173,7 +181,7 @@ def create_child_plane_endpoint(
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
 ):
-    """在指定父平面下创建子网络平面。"""
+    """在指定父平面下创建子网络平面（最多 3 级嵌套）。"""
     from app.services.region import get_region
 
     region = get_region(db, region_id)
@@ -181,7 +189,7 @@ def create_child_plane_endpoint(
         raise HTTPException(status_code=404, detail="Region not found")
     try:
         child = create_child_plane(db, region_id, plane_id, data.cidr, operator)
-    except ValueError as e:
+    except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     db.commit()
     return {
@@ -201,6 +209,7 @@ def disable_plane_endpoint(
     db: Session = Depends(get_db),
     operator: str = Depends(get_operator),
 ):
+    """删除平面节点（级联删除子平面及 IP 分配）。"""
     deleted = disable_plane_for_region(db, region_id, plane_id, operator)
     if not deleted:
         raise HTTPException(status_code=404, detail="Region plane association not found")
