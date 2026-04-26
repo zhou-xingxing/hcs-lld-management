@@ -94,7 +94,7 @@
 │   └── start.sh                          # 前端启动脚本
 │
 ├── docker-compose.yml                    # Docker Compose 编排
-├── 架构设计文档.md                        # 本文件：系统架构设计文档
+├── SYSTEM_DESIGN.md                     # 系统架构设计文档
 └── 项目使用说明.md                        # 本文件：项目使用说明
 
 Docker 部署文件：
