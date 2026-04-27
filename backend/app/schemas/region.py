@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.utils.ip_utils import parse_ip
 
 
 class RegionBase(BaseModel):
@@ -39,6 +41,10 @@ class RegionPlaneResponse(BaseModel):
     plane_type_id: str
     plane_type_name: str
     cidr: str | None = None
+    vlan_id: int | None = None
+    gateway_position: str | None = None
+    gateway_ip: str | None = None
+    gateway_ip_warning: str | None = None
     parent_id: str | None = None
     plane_type_parent_id: str | None = None
     allocation_count: int = 0
@@ -52,6 +58,22 @@ class RegionPlaneResponse(BaseModel):
 class RegionPlaneCreate(BaseModel):
     plane_type_id: str
     cidr: str = Field(..., max_length=43, description="CIDR 地址段，如 10.0.0.0/22")
+    vlan_id: int | None = Field(None, ge=1, le=4094)
+    gateway_position: str | None = Field(None, max_length=255)
+    gateway_ip: str | None = Field(None, max_length=39)
+
+    @field_validator("gateway_ip")
+    @classmethod
+    def validate_gateway_ip(cls, value: str | None) -> str | None:
+        """校验可选网关 IP 地址格式。"""
+        if value is None:
+            return None
+        value = value.strip()
+        if value == "":
+            return None
+        if not parse_ip(value):
+            raise ValueError("网关 IP 地址格式无效")
+        return value
 
 
 class ChildPlaneCreate(BaseModel):

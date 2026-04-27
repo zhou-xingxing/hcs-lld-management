@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 from typing import Any
 
 from sqlalchemy import func
@@ -10,7 +11,7 @@ from app.models.ip_allocation import IPAllocation
 from app.models.network_plane_type import NetworkPlaneType
 from app.models.region_network_plane import RegionNetworkPlane
 from app.services.change_log import log_change
-from app.utils.ip_utils import find_overlapping, parse_cidr
+from app.utils.ip_utils import IPNetwork, find_overlapping, parse_cidr, parse_ip
 from app.utils.time_utils import format_datetime
 
 
@@ -41,6 +42,9 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
             "plane_type_id": p.plane_type_id,
             "plane_type_name": p.plane_type.name if p.plane_type else "",
             "cidr": p.cidr,
+            "vlan_id": p.vlan_id,
+            "gateway_position": p.gateway_position,
+            "gateway_ip": p.gateway_ip,
             "parent_id": None,
             "plane_type_parent_id": p.plane_type.parent_id if p.plane_type else None,
             "allocation_count": alloc_count,
@@ -64,8 +68,16 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
 
 
 def enable_plane_for_region(
-    db: Session, region_id: str, plane_type_id: str, cidr: str, operator: str
-) -> RegionNetworkPlane:
+    db: Session,
+    region_id: str,
+    plane_type_id: str,
+    cidr: str,
+    operator: str,
+    *,
+    vlan_id: int | None = None,
+    gateway_position: str | None = None,
+    gateway_ip: str | None = None,
+) -> tuple[RegionNetworkPlane, str | None]:
     """为 Region 启用一个网络平面类型。
 
     Args:
@@ -74,9 +86,12 @@ def enable_plane_for_region(
         plane_type_id: 网络平面类型 ID。
         cidr: 根平面的 CIDR 范围。
         operator: 操作者名称。
+        vlan_id: VLAN ID，可选。
+        gateway_position: 网关位置，可选。
+        gateway_ip: 网关 IP 地址，可选。
 
     Returns:
-        新创建的 RegionNetworkPlane 对象。
+        新创建的 RegionNetworkPlane 对象和可选弱校验提示。
 
     Raises:
         BusinessError: 该类型已启用、CIDR 格式无效、父级未启用或 CIDR 越界。
@@ -100,6 +115,7 @@ def enable_plane_for_region(
     net = parse_cidr(cidr)
     if not net:
         raise BusinessError(f"无效的 CIDR 格式: {cidr}")
+    gateway_ip_warning = _validate_gateway_ip_policy(net, gateway_ip, is_private=pt.is_private)
 
     parent_plane: RegionNetworkPlane | None = None
     if pt.parent_id:
@@ -138,6 +154,9 @@ def enable_plane_for_region(
         region_id=region_id,
         plane_type_id=plane_type_id,
         cidr=cidr,
+        vlan_id=vlan_id,
+        gateway_position=gateway_position or None,
+        gateway_ip=gateway_ip or None,
     )
     db.add(rp)
     db.flush()
@@ -148,9 +167,12 @@ def enable_plane_for_region(
         entity_id=rp.id,
         action="create",
         operator=operator,
-        new_value=f"region={region_id}, plane_type={pt.name}, cidr={cidr}",
+        new_value=(
+            f"region={region_id}, plane_type={pt.name}, cidr={cidr}, "
+            f"vlan_id={vlan_id or ''}, gateway_position={gateway_position or ''}, gateway_ip={gateway_ip or ''}"
+        ),
     )
-    return rp
+    return rp, gateway_ip_warning
 
 
 def create_child_plane(db: Session, region_id: str, parent_id: str, cidr: str, operator: str) -> RegionNetworkPlane:
@@ -262,3 +284,40 @@ def _get_enabled_child_plane_cidrs(db: Session, region_id: str, parent_type_id: 
         .all()
     )
     return [row[0] for row in rows if row[0]]
+
+
+def _validate_gateway_ip_policy(net: IPNetwork, gateway_ip: str | None, *, is_private: bool) -> str | None:
+    """强校验网关 IP 在 CIDR 内，弱校验网关 IP 是否符合推荐位置。"""
+    if not gateway_ip:
+        return None
+    ip = parse_ip(gateway_ip)
+    if not ip:
+        raise BusinessError(f"无效的网关 IP 地址: {gateway_ip}")
+    try:
+        if ip not in net:
+            raise BusinessError(f"网关 IP {gateway_ip} 必须在平面 CIDR {net.with_prefixlen} 范围内")
+    except TypeError as exc:
+        raise BusinessError(f"网关 IP {gateway_ip} 必须与平面 CIDR {net.with_prefixlen} 使用相同 IP 版本") from exc
+
+    expected = _expected_gateway_ip(net, is_private=is_private)
+    if ip != expected:
+        position = "第一个可用 IP" if is_private else "最后一个可用 IP"
+        plane_scope = "私网" if is_private else "非私网"
+        return f"当前网关 IP 不符合推荐规则：{plane_scope}平面建议使用 CIDR 内{position} {expected}"
+    return None
+
+
+def _expected_gateway_ip(net: IPNetwork, *, is_private: bool) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    if net.num_addresses == 1:
+        return net.network_address
+    if is_private:
+        if isinstance(net, ipaddress.IPv4Network) and net.prefixlen < 31:
+            return net.network_address + 1
+        if isinstance(net, ipaddress.IPv6Network) and net.prefixlen < 127:
+            return net.network_address + 1
+        return net.network_address
+    if isinstance(net, ipaddress.IPv4Network):
+        if net.prefixlen < 31:
+            return net.broadcast_address - 1
+        return net.broadcast_address
+    return net.network_address + net.num_addresses - 1

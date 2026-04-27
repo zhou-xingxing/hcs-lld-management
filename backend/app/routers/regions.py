@@ -164,7 +164,16 @@ def enable_plane_endpoint(
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
     try:
-        rp = enable_plane_for_region(db, region_id, data.plane_type_id, data.cidr, operator_name(current_user))
+        rp, gateway_ip_warning = enable_plane_for_region(
+            db,
+            region_id,
+            data.plane_type_id,
+            data.cidr,
+            operator_name(current_user),
+            vlan_id=data.vlan_id,
+            gateway_position=data.gateway_position,
+            gateway_ip=data.gateway_ip,
+        )
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     db.commit()
@@ -182,6 +191,10 @@ def enable_plane_endpoint(
         "plane_type_id": rp.plane_type_id,
         "plane_type_name": pt.name,
         "cidr": rp.cidr,
+        "vlan_id": rp.vlan_id,
+        "gateway_position": rp.gateway_position,
+        "gateway_ip": rp.gateway_ip,
+        "gateway_ip_warning": gateway_ip_warning,
         "parent_id": parent_plane_id,
         "plane_type_parent_id": pt.parent_id,
         "created_at": format_datetime(rp.created_at),

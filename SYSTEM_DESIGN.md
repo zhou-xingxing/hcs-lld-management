@@ -276,10 +276,15 @@ erDiagram
 | region_id | String(36) | FK -> regions.id, CASCADE | 所属 Region |
 | plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE, UNIQUE(region_id, plane_type_id) | 启用的平面类型 |
 | cidr | String(43) | NULLABLE | CIDR 地址段，如 "10.0.0.0/22" |
+| vlan_id | Integer | NULLABLE, 1-4094 | VLAN ID |
+| gateway_position | String(255) | NULLABLE | 网关位置，如一对交换机设备名称或端口位置 |
+| gateway_ip | String(39) | NULLABLE | 网关 IP 地址 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
 Region 维度的网络平面启用和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。
+
+`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息，与具体 IP 分配记录中的 VLAN/网关字段相互独立。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。
 
 #### ip_allocations
 

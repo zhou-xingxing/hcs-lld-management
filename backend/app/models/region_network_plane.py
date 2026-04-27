@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -29,6 +29,9 @@ class RegionNetworkPlane(Base):
     plane_type_id: Mapped[str] = mapped_column(String(36), ForeignKey("network_plane_types.id", ondelete="CASCADE"))
     # CIDR 网络地址段，如 "10.0.0.0/22"；nullable 兼容旧数据
     cidr: Mapped[str | None] = mapped_column(String(43), nullable=True)
+    vlan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gateway_position: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    gateway_ip: Mapped[str | None] = mapped_column(String(39), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db, onupdate=utcnow_db)
 

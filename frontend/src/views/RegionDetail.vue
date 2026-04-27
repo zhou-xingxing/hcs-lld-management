@@ -48,6 +48,16 @@
               />
             </el-select>
             <el-input v-model="newPlaneCidr" placeholder="CIDR, 如 10.0.0.0/22" size="small" style="width: 200px" clearable />
+            <el-input-number v-model="newPlaneVlanId" placeholder="VLAN" size="small" :min="1" :max="4094" :step="1" :controls="false" style="width: 90px" />
+            <el-input v-model="newPlaneGatewayPosition" placeholder="网关位置" size="small" style="width: 120px" clearable />
+            <el-input
+              v-model="newPlaneGatewayIp"
+              placeholder="网关IP"
+              size="small"
+              style="width: 140px"
+              clearable
+              @focus="fillRecommendedGatewayIp"
+            />
             <el-button size="small" type="primary" @click="enablePlane" :disabled="!newPlaneTypeId || !newPlaneCidr">启用</el-button>
           </div>
         </div>
@@ -65,6 +75,9 @@
               <el-icon><Connection /></el-icon>
               <span class="plane-type-name">{{ data.plane_type_name }}</span>
               <el-tag size="small" type="info" effect="plain" class="plane-cidr-tag">{{ data.cidr }}</el-tag>
+              <el-tag v-if="data.vlan_id" size="small" type="warning" effect="plain">VLAN {{ data.vlan_id }}</el-tag>
+              <el-tag v-if="data.gateway_position" size="small" type="success" effect="plain">{{ data.gateway_position }}</el-tag>
+              <el-tag v-if="data.gateway_ip" size="small" type="success" effect="plain">{{ data.gateway_ip }}</el-tag>
               <span class="plane-alloc-count">{{ data.allocation_count }} 分配</span>
               <span v-if="canManageBusiness" class="plane-actions">
                 <el-popconfirm
@@ -215,6 +228,9 @@ const allocationPageSize = ref(20)
 // ---- 平面相关状态 ----
 const newPlaneTypeId = ref('')
 const newPlaneCidr = ref('')
+const newPlaneVlanId = ref(null)
+const newPlaneGatewayPosition = ref('')
+const newPlaneGatewayIp = ref('')
 const availablePlaneTypes = ref([])
 const filterPlaneId = ref('')
 
@@ -284,13 +300,66 @@ async function fetchAllocations() {
 async function enablePlane() {
   if (!newPlaneTypeId.value || !newPlaneCidr.value) return
   try {
-    await enableRegionPlane(props.id, newPlaneTypeId.value, newPlaneCidr.value)
+    const result = await enableRegionPlane(props.id, {
+      plane_type_id: newPlaneTypeId.value,
+      cidr: newPlaneCidr.value,
+      vlan_id: newPlaneVlanId.value || null,
+      gateway_position: newPlaneGatewayPosition.value || null,
+      gateway_ip: newPlaneGatewayIp.value || null,
+    })
     ElMessage.success('网络平面已启用')
+    if (result.gateway_ip_warning) {
+      ElMessage.warning(result.gateway_ip_warning)
+    }
     newPlaneTypeId.value = ''
     newPlaneCidr.value = ''
+    newPlaneVlanId.value = null
+    newPlaneGatewayPosition.value = ''
+    newPlaneGatewayIp.value = ''
     await fetchRegion()
     await fetchPlanes()
   } catch (e) { /* handled by interceptor */ }
+}
+
+function fillRecommendedGatewayIp() {
+  if (newPlaneGatewayIp.value || !newPlaneCidr.value || !newPlaneTypeId.value) return
+  const planeType = availablePlaneTypes.value.find(pt => pt.id === newPlaneTypeId.value)
+  const recommended = recommendedGatewayIp(newPlaneCidr.value, Boolean(planeType?.is_private))
+  if (recommended) {
+    newPlaneGatewayIp.value = recommended
+  }
+}
+
+function recommendedGatewayIp(cidr, isPrivate) {
+  const [ip, prefixText] = cidr.trim().split('/')
+  const prefix = Number(prefixText)
+  if (!isValidIpv4(ip) || !Number.isInteger(prefix) || prefix < 0 || prefix > 32) return ''
+  const base = ipv4ToNumber(ip)
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0
+  const network = base & mask
+  const broadcast = (network | (~mask >>> 0)) >>> 0
+  if (network === broadcast) return numberToIpv4(network)
+  if (isPrivate) {
+    return numberToIpv4(prefix < 31 ? network + 1 : network)
+  }
+  return numberToIpv4(prefix < 31 ? broadcast - 1 : broadcast)
+}
+
+function isValidIpv4(ip) {
+  const parts = ip.split('.')
+  return parts.length === 4 && parts.every(part => {
+    if (!/^\d+$/.test(part)) return false
+    const value = Number(part)
+    return value >= 0 && value <= 255
+  })
+}
+
+function ipv4ToNumber(ip) {
+  return ip.split('.').reduce((acc, part) => ((acc << 8) + Number(part)) >>> 0, 0)
+}
+
+function numberToIpv4(value) {
+  return [24, 16, 8, 0].map(shift => (value >>> shift) & 255).join('.')
 }
 
 async function disablePlane(planeId) {
@@ -435,7 +504,7 @@ onMounted(async () => {
 }
 .page-title { font-size: var(--font-size-xl); font-weight: 700; color: var(--color-text-primary); margin: 4px 0 0; }
 .page-desc { font-size: var(--font-size-sm); color: var(--color-text-tertiary); margin-top: 4px; }
-.header-actions { display: flex; gap: 8px; }
+.header-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .region-info { margin-bottom: var(--spacing-md); }
 .section-card { margin-bottom: var(--spacing-md); }
 .card-header { display: flex; align-items: center; justify-content: space-between; }
