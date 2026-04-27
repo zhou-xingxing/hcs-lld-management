@@ -1,10 +1,13 @@
-.PHONY: lint test check help
+.PHONY: lint test coverage check help
 
 lint:  ## 代码检查：ruff + black + mypy
 	bash run_checks.sh
 
 test:  ## 运行测试
 	bash run_tests.sh
+
+coverage:  ## 运行测试并输出覆盖率
+	bash run_tests.sh --cov=app --cov-report=term-missing --cov-report=html --cov-report=xml
 
 check: lint test  ## 完整门禁：lint → test
 
