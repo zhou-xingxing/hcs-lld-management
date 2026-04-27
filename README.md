@@ -3,7 +3,7 @@
 ## 项目结构
 
 ```
-/Users/maozexu/HCS_LLD_Management/
+./
 ├── backend/                              # Python FastAPI 后端
 │   ├── app/
 │   │   ├── __init__.py
@@ -121,7 +121,7 @@ Docker 部署文件：
 ### 步骤 1：启动后端
 
 ```bash
-cd /Users/maozexu/HCS_LLD_Management/backend
+cd ./backend
 
 # 创建并激活虚拟环境（首次运行）
 python3 -m venv venv
@@ -146,7 +146,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ### 步骤 2：启动前端
 
 ```bash
-cd /Users/maozexu/HCS_LLD_Management/frontend
+cd ./frontend
 
 # 安装依赖（首次运行）
 npm install
@@ -162,7 +162,7 @@ npm run dev
 ### 步骤 3：初始化示例数据（可选）
 
 ```bash
-cd /Users/maozexu/HCS_LLD_Management/backend
+cd ./backend
 source venv/bin/activate
 python seed.py
 ```
@@ -187,7 +187,7 @@ cd frontend && bash start.sh
 ### 代码检查
 
 ```bash
-cd /Users/maozexu/HCS_LLD_Management/backend
+cd ./backend
 
 # ruff → black --check → mypy（自动激活 venv）
 bash run_checks.sh
@@ -197,7 +197,7 @@ bash run_checks.sh
 ### 运行全部测试
 
 ```bash
-cd /Users/maozexu/HCS_LLD_Management/backend
+cd ./backend
 source venv/bin/activate
 python -m pytest tests/ -v
 ```
@@ -205,14 +205,14 @@ python -m pytest tests/ -v
 或使用测试脚本（会自动激活虚拟环境）：
 
 ```bash
-cd /Users/maozexu/HCS_LLD_Management/backend
+cd ./backend
 bash run_tests.sh
 ```
 
 ### 完整门禁
 
 ```bash
-cd /Users/maozexu/HCS_LLD_Management/backend
+cd ./backend
 make check       # lint + test 串联执行
 ```
 
