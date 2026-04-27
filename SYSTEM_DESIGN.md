@@ -421,15 +421,17 @@ GET /api/backup/records
 
 | 角色 | 读权限 | 写权限 |
 |---|---|---|
-| administrator | 所有业务数据、配置数据、用户数据 | 用户与权限分配、Region 管理、全局配置（网络平面类型、备份配置等） |
+| administrator | 所有业务数据、配置数据、用户数据 | 用户与权限分配、Region 元数据管理、全局配置（网络平面类型、备份配置等） |
 | user | 所有业务数据、配置数据 | 仅限已授权 Region 内业务数据（网络平面树、Excel 导入确认） |
 
 权限边界：
 
-1. `administrator` 不写 Region 内业务数据，避免全局管理员直接修改业务规划。
-2. `user` 不能管理用户、Region 元数据和全局配置。
-3. Excel 导入确认会检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
-4. 变更日志的 `operator` 来自当前登录用户 `display_name` 或 `username`，不再接受客户端伪造的 `X-Operator`。
+1. `administrator` 可以创建、更新、删除 Region 基础对象（Region 元数据），对应能力标签为 `manage:region-metadata`。
+2. `administrator` 不写 Region 内业务数据，避免全局管理员直接修改业务规划。
+3. `user` 不能管理用户、Region 元数据和全局配置。
+4. Excel 导入确认会检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
+5. 变更日志的 `operator` 来自当前登录用户 `display_name` 或 `username`，不再接受客户端伪造的 `X-Operator`。
+6. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_regions` 授权校验为准。
 
 ### 6.5 启动初始化
 
@@ -540,6 +542,8 @@ GET /api/backup/records
 
 1. `administrator` 管理账号、Region 元数据和全局配置，但不能写 Region 内业务数据。
 2. `user` 可以读取所有数据，只能写自己被授权 Region 内的网络平面树和导入数据。
+
+**权限标签**：`/api/auth/me` 会返回当前用户的粗粒度能力标签。`administrator` 包含 `read:all`、`manage:users`、`manage:global-config`、`manage:region-metadata`；普通 `user` 包含 `read:all`、`manage:assigned-region-business`。这些标签用于描述能力边界和支持前端展示，当前后端权限判定仍通过 `require_administrator()` 与 `ensure_region_business_write_allowed()` 执行。
 
 **理由**：当前系统是内部部署的管理工具，暂不引入 SSO/OIDC 可降低部署复杂度；两类角色与 TODO 中的权限边界一致。Region 授权单独建 `user_regions` 表，既能表达普通 user 的业务归属，也避免把权限规则散落在前端。
 

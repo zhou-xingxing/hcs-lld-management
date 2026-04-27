@@ -197,7 +197,7 @@ def current_user_to_response(user: User) -> dict[str, Any]:
     """Serialize current user and coarse permissions."""
     permissions = ["read:all"]
     if user.role == "administrator":
-        permissions.extend(["manage:users", "manage:global-config", "manage:regions"])
+        permissions.extend(["manage:users", "manage:global-config", "manage:region-metadata"])
     else:
         permissions.append("manage:assigned-region-business")
     return {**user_to_response(user), "permissions": permissions}
