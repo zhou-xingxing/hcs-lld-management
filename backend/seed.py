@@ -5,8 +5,8 @@ Run with: python seed.py
 
 import logging
 
-from app.database import SessionLocal, engine, Base
-from app.models import Region, NetworkPlaneType, RegionNetworkPlane, IPAllocation
+from app.database import Base, SessionLocal, engine
+from app.models import NetworkPlaneType, Region, RegionNetworkPlane
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -53,126 +53,31 @@ def seed():
             created_regions[name] = region
             logger.info("  Created region: %s", name)
 
-            # Enable all plane types for each region (with CIDR)
-            plane_cidrs = {
-                "管理平面": "10.10.0.0/16",
-                "业务平面": "172.16.0.0/16",
-                "存储平面": "192.168.10.0/24",
-                "内部通信平面": "10.20.0.0/16",
-                "BMC平面": "192.168.100.0/24",
+            # Enable all plane types for each region (with CIDR and gateway metadata)
+            plane_configs = {
+                "管理平面": ("10.10.0.0/16", 100, "MGMT-SW01 / MGMT-SW02", "10.10.0.1"),
+                "业务平面": ("172.16.0.0/16", 200, "SERVICE-SW01 / SERVICE-SW02", "172.16.255.254"),
+                "存储平面": ("192.168.10.0/24", 300, "STORAGE-SW01 / STORAGE-SW02", "192.168.10.1"),
+                "内部通信平面": ("10.20.0.0/16", 400, "INNER-SW01 / INNER-SW02", "10.20.0.1"),
+                "BMC平面": ("192.168.100.0/24", 500, "BMC-SW01 / BMC-SW02", "192.168.100.1"),
             }
             for pt_name, pt in plane_types.items():
+                cidr, vlan_id, gateway_position, gateway_ip = plane_configs[pt_name]
                 rp = RegionNetworkPlane(
                     region_id=region.id,
                     plane_type_id=pt.id,
-                    cidr=plane_cidrs.get(pt_name),
+                    cidr=cidr,
+                    vlan_id=vlan_id,
+                    gateway_position=gateway_position,
+                    gateway_ip=gateway_ip,
                 )
                 db.add(rp)
-
-        db.flush()
-
-        # Collect created planes for plane_id mapping
-        region_planes = {
-            (rp.region_id, rp.plane_type_id): rp.id
-            for rp in db.query(RegionNetworkPlane).all()
-        }
-
-        # Create sample allocations
-        allocations_data = [
-            {
-                "region": "HCS华北-北京",
-                "plane": "管理平面",
-                "ip_range": "10.10.0.0/16",
-                "vlan_id": 100,
-                "gateway": "10.10.0.1",
-                "subnet_mask": "255.255.0.0",
-                "purpose": "管理节点网络",
-                "status": "active",
-            },
-            {
-                "region": "HCS华北-北京",
-                "plane": "业务平面",
-                "ip_range": "172.16.0.0/16",
-                "vlan_id": 200,
-                "gateway": "172.16.0.1",
-                "subnet_mask": "255.255.0.0",
-                "purpose": "租户业务网络",
-                "status": "active",
-            },
-            {
-                "region": "HCS华北-北京",
-                "plane": "存储平面",
-                "ip_range": "192.168.10.0/24",
-                "vlan_id": 300,
-                "gateway": "192.168.10.1",
-                "subnet_mask": "255.255.255.0",
-                "purpose": "存储后端网络",
-                "status": "active",
-            },
-            {
-                "region": "HCS华北-北京",
-                "plane": "内部通信平面",
-                "ip_range": "10.20.0.0/16",
-                "vlan_id": 400,
-                "gateway": "10.20.0.1",
-                "subnet_mask": "255.255.0.0",
-                "purpose": "组件间通信",
-                "status": "active",
-            },
-            {
-                "region": "HCS华北-北京",
-                "plane": "BMC平面",
-                "ip_range": "192.168.100.0/24",
-                "vlan_id": 500,
-                "gateway": "192.168.100.1",
-                "subnet_mask": "255.255.255.0",
-                "purpose": "服务器BMC管理",
-                "status": "active",
-            },
-            {
-                "region": "HCS华东-上海",
-                "plane": "管理平面",
-                "ip_range": "10.30.0.0/16",
-                "vlan_id": 101,
-                "gateway": "10.30.0.1",
-                "subnet_mask": "255.255.0.0",
-                "purpose": "管理节点网络",
-                "status": "active",
-            },
-            {
-                "region": "HCS华东-上海",
-                "plane": "业务平面",
-                "ip_range": "172.20.0.0/16",
-                "vlan_id": 201,
-                "gateway": "172.20.0.1",
-                "subnet_mask": "255.255.0.0",
-                "purpose": "租户业务网络",
-                "status": "reserved",
-            },
-        ]
-
-        for item in allocations_data:
-            region = created_regions[item["region"]]
-            pt = plane_types[item["plane"]]
-            plane_key = (region.id, pt.id)
-            allocation = IPAllocation(
-                region_id=region.id,
-                plane_type_id=pt.id,
-                plane_id=region_planes.get(plane_key),
-                ip_range=item["ip_range"],
-                vlan_id=item["vlan_id"],
-                gateway=item["gateway"],
-                subnet_mask=item["subnet_mask"],
-                purpose=item["purpose"],
-                status=item["status"],
-            )
-            db.add(allocation)
 
         db.commit()
         logger.info("\nSeed completed successfully!")
         logger.info("  Regions: %d", len(created_regions))
         logger.info("  Plane Types: %d", len(plane_types))
-        logger.info("  Allocations: %d", len(allocations_data))
+        logger.info("  Region Network Planes: %d", len(created_regions) * len(plane_types))
 
     finally:
         db.close()

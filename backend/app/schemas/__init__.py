@@ -6,7 +6,6 @@ from app.schemas.excel import (
     ImportResultResponse,
     StatsResponse,
 )
-from app.schemas.ip_allocation import AllocationCreate, AllocationResponse, AllocationUpdate
 from app.schemas.lookup import LookupResponse
 from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeResponse, PlaneTypeUpdate
 from app.schemas.region import (

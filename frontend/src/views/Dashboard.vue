@@ -29,22 +29,22 @@
         <el-card shadow="never" class="chart-card">
           <template #header>
             <div class="card-header">
-              <span class="card-title">按状态分布</span>
+              <span class="card-title">按公网/私网分布</span>
             </div>
           </template>
-          <div v-if="Object.keys(stats.allocation_by_status).length === 0" class="empty-state">
+          <div v-if="Object.keys(stats.plane_by_scope).length === 0" class="empty-state">
             <el-icon :size="40" color="#d1d5db"><Coin /></el-icon>
             <p>暂无数据</p>
           </div>
           <div v-else class="status-list">
-            <div v-for="(count, status) in stats.allocation_by_status" :key="status" class="status-bar-row">
+            <div v-for="(count, scope) in stats.plane_by_scope" :key="scope" class="status-bar-row">
               <div class="status-bar-label">
-                <el-tag :type="statusTag(status)" size="small" effect="plain">{{ statusLabel(status) }}</el-tag>
+                <el-tag :type="scope === '私网' ? 'success' : 'warning'" size="small" effect="plain">{{ scope }}</el-tag>
                 <span class="status-count">{{ count }}</span>
               </div>
               <el-progress
-                :percentage="calcPercent(count, stats.total_allocations)"
-                :color="statusColor(status)"
+                :percentage="calcPercent(count, stats.total_region_planes)"
+                :color="scope === '私网' ? '#34a853' : '#fbbc04'"
                 :stroke-width="8"
                 :show-text="false"
                 class="status-progress"
@@ -60,18 +60,18 @@
               <span class="card-title">按区域分布</span>
             </div>
           </template>
-          <div v-if="stats.allocation_by_region.length === 0" class="empty-state">
+          <div v-if="stats.plane_by_region.length === 0" class="empty-state">
             <el-icon :size="40" color="#d1d5db"><MapLocation /></el-icon>
             <p>暂无数据</p>
           </div>
           <div v-else class="region-chart">
-            <div v-for="item in stats.allocation_by_region" :key="item.region_name" class="region-bar-row">
+            <div v-for="item in stats.plane_by_region" :key="item.region_name" class="region-bar-row">
               <div class="region-bar-label">
                 <span class="region-name">{{ item.region_name }}</span>
                 <span class="region-count">{{ item.count }}</span>
               </div>
               <el-progress
-                :percentage="calcPercent(item.count, stats.total_allocations)"
+                :percentage="calcPercent(item.count, stats.total_region_planes)"
                 color="var(--color-primary)"
                 :stroke-width="8"
                 :show-text="false"
@@ -122,34 +122,19 @@ const loading = ref(false)
 const stats = ref({
   total_regions: 0,
   total_plane_types: 0,
-  total_allocations: 0,
+  total_region_planes: 0,
   total_change_logs: 0,
-  allocation_by_status: {},
-  allocation_by_region: [],
+  plane_by_scope: {},
+  plane_by_region: [],
   recent_changes: [],
 })
 
 const statCards = [
   { key: 'total_regions', label: '区域总数', icon: Monitor, gradient: 'linear-gradient(135deg, #1a73e8 0%, #4a90d9 100%)', accent: '#1a73e8' },
   { key: 'total_plane_types', label: '网络平面类型', icon: ConnectionIcon, gradient: 'linear-gradient(135deg, #34a853 0%, #66bb6a 100%)', accent: '#34a853' },
-  { key: 'total_allocations', label: 'IP 分配总数', icon: Coin, gradient: 'linear-gradient(135deg, #f57c00 0%, #ffb74d 100%)', accent: '#f57c00' },
+  { key: 'total_region_planes', label: '网段总数', icon: Coin, gradient: 'linear-gradient(135deg, #f57c00 0%, #ffb74d 100%)', accent: '#f57c00' },
   { key: 'total_change_logs', label: '变更记录数', icon: Document, gradient: 'linear-gradient(135deg, #7c4dff 0%, #b388ff 100%)', accent: '#7c4dff' },
 ]
-
-function statusTag(status) {
-  const map = { active: 'success', reserved: 'warning', deprecated: 'info' }
-  return map[status] || 'info'
-}
-
-function statusLabel(status) {
-  const map = { active: '已使用', reserved: '已预留', deprecated: '已废弃' }
-  return map[status] || status
-}
-
-function statusColor(status) {
-  const map = { active: '#34a853', reserved: '#fbbc04', deprecated: '#9aa0a6' }
-  return map[status] || '#9aa0a6'
-}
 
 function calcPercent(value, total) {
   if (!total) return 0
@@ -157,7 +142,7 @@ function calcPercent(value, total) {
 }
 
 function entityLabel(t) {
-  const map = { region: '区域', network_plane_type: '网络平面类型', region_network_plane: '区域网络平面', ip_allocation: 'IP分配' }
+  const map = { region: '区域', network_plane_type: '网络平面类型', region_network_plane: '区域网络平面' }
   return map[t] || t
 }
 

@@ -56,7 +56,6 @@ def list_regions_endpoint(
                 name=r.name,
                 description=r.description or "",
                 plane_count=len(r.region_planes) if r.region_planes else 0,
-                allocation_count=len(r.allocations) if r.allocations else 0,
                 created_at=format_datetime(r.created_at),
                 updated_at=format_datetime(r.updated_at),
             )
@@ -81,7 +80,6 @@ def create_region_endpoint(
         name=region.name,
         description=region.description or "",
         plane_count=0,
-        allocation_count=0,
         created_at=format_datetime(region.created_at),
         updated_at=format_datetime(region.updated_at),
     )
@@ -113,7 +111,6 @@ def update_region_endpoint(
         name=region.name,
         description=region.description or "",
         plane_count=len(region.region_planes) if region.region_planes else 0,
-        allocation_count=len(region.allocations) if region.allocations else 0,
         created_at=format_datetime(region.created_at),
         updated_at=format_datetime(region.updated_at),
     )
@@ -232,7 +229,7 @@ def disable_plane_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """删除平面节点（级联删除子平面及 IP 分配）。"""
+    """删除平面节点（级联删除子平面）。"""
     ensure_region_business_write_allowed(current_user, region_id)
     deleted = disable_plane_for_region(db, region_id, plane_id, operator_name(current_user))
     if not deleted:

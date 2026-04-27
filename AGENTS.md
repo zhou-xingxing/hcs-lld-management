@@ -4,7 +4,7 @@ This file provides guidance to Agents when working with code in this repository.
 
 ## 项目概述
 
-HCS LLD 管理系统 —— 管理云平台 Region 网络平面 IP 地址分配的 Web 应用，替代 Excel 手动管理。UI 为中文（zh-CN）。
+HCS LLD 管理系统 —— 管理云平台 Region 网络平面地址规划的 Web 应用，替代 Excel 手动管理。UI 为中文（zh-CN）。
 
 技术栈：Python 3.12 + FastAPI + SQLAlchemy + SQLite（后端），Vue 3 + Vite + Element Plus（前端）。
 
@@ -84,7 +84,7 @@ routers/  →  services/  →  models/
 
 - **显式审计日志**：Service 在 mutate 后**手动**调用 `log_change()`，不用 SQLAlchemy events。这是有意设计，更易控、可测试。
 - **CIDR 重叠检测**：在 Python 内存用 `ipaddress` 模块完成（`app/utils/ip_utils.py`）。SQLite 无原生 CIDR 类型，需加载全表到内存比较。MVP 数据量下性能足够。
-- **反规范化**：`IPAllocation` 直接存 `region_id`，避免频繁 JOIN。应用层保证 `(region_id, plane_type_id)` 对应有效的 `RegionNetworkPlane`。
+- **Region 网络平面即网段**：`RegionNetworkPlane` 承载 Region 内具体网段的 CIDR、VLAN ID、网关位置和网关 IP。
 - **导入两阶段**：`preview` → `confirm`。预览数据在内存缓存（TTL 30min，`IMPORT_TTL_MINUTES`）。见 `app/services/excel.py`。
 - **启动时建表**：`main.py` lifespan 调用 `Base.metadata.create_all()`，Alembic 仍管迁移，但新部署无需手动建表。
 - **Alembic 配置**：`render_as_batch=True`（`alembic/env.py`），兼容 SQLite 的 ALTER TABLE 限制。
@@ -100,7 +100,7 @@ routers/  →  services/  →  models/
 ### 测试
 
 - 每个测试独立内存 SQLite（`StaticPool`），`conftest.py` 中 override `get_db`
-- 当前共 30+ 个测试，5 个文件：health、regions、allocations、lookup、excel utils、plane_tree
+- 当前共 50+ 个测试，覆盖 health、regions、lookup、excel utils、plane_tree、auth、backup、network plane types
 - 前端无测试，CI 仅验证 `npm run build`
 
 ### CI/CD

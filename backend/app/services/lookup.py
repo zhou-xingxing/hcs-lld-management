@@ -5,12 +5,12 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.exceptions import BusinessError
-from app.models.ip_allocation import IPAllocation
+from app.models.region_network_plane import RegionNetworkPlane
 from app.utils.ip_utils import parse_cidr, parse_ip
 
 
-def lookup_allocations(db: Session, q: str, exact: bool = True) -> list[IPAllocation]:
-    """按 IP 地址或 CIDR 查询 IP 分配记录。
+def lookup_region_planes(db: Session, q: str, exact: bool = True) -> list[RegionNetworkPlane]:
+    """按 IP 地址或 CIDR 查询 Region 网络平面。
 
     Args:
         db: 数据库会话。
@@ -19,33 +19,33 @@ def lookup_allocations(db: Session, q: str, exact: bool = True) -> list[IPAlloca
                False 则返回所有与查询重叠的记录。
 
     Returns:
-        匹配的 IPAllocation 对象列表。
+        匹配的 RegionNetworkPlane 对象列表。
 
     Raises:
         BusinessError: q 不是合法的 IP 或 CIDR 格式。
     """
-    allocations = db.query(IPAllocation).all()
-    results: list[IPAllocation] = []
+    planes = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.cidr.isnot(None)).all()
+    results: list[RegionNetworkPlane] = []
 
     ip = parse_ip(q)
     net = parse_cidr(q) if not ip else None
 
     if ip:
-        for a in allocations:
-            existing = parse_cidr(a.ip_range)
+        for plane in planes:
+            existing = parse_cidr(plane.cidr or "")
             if existing and ip in existing:
-                results.append(a)
+                results.append(plane)
     elif net:
         if exact:
-            for a in allocations:
-                existing = parse_cidr(a.ip_range)
+            for plane in planes:
+                existing = parse_cidr(plane.cidr or "")
                 if existing and existing == net:
-                    results.append(a)
+                    results.append(plane)
         else:
-            for a in allocations:
-                existing = parse_cidr(a.ip_range)
+            for plane in planes:
+                existing = parse_cidr(plane.cidr or "")
                 if existing and existing.overlaps(net):
-                    results.append(a)
+                    results.append(plane)
     else:
         raise BusinessError(f"Invalid IP address or CIDR: {q}")
 

@@ -3,7 +3,7 @@
     <div class="page-heading">
       <div>
         <h2 class="page-title">导入 / 导出</h2>
-        <p class="page-desc">通过 Excel 批量导入 IP 分配数据，或按条件导出为 Excel</p>
+        <p class="page-desc">通过 Excel 批量导入 Region 网络平面数据，或按条件导出为 Excel</p>
       </div>
     </div>
 
@@ -85,9 +85,10 @@
                 <el-table-column prop="row_number" label="行" width="50" />
                 <el-table-column prop="region_name" label="区域" width="120" />
                 <el-table-column prop="plane_type_name" label="网络平面" width="120" />
-                <el-table-column prop="ip_range" label="IP段" width="140" />
+                <el-table-column prop="ip_range" label="CIDR" width="140" />
                 <el-table-column prop="vlan_id" label="VLAN" width="80" />
-                <el-table-column prop="status" label="状态" width="80" />
+                <el-table-column prop="gateway_position" label="网关位置" min-width="140" show-overflow-tooltip />
+                <el-table-column prop="gateway_ip" label="网关IP" width="140" />
               </el-table>
             </div>
             <el-button

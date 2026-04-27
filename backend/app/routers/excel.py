@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import ensure_region_business_write_allowed, get_current_user, operator_name
-from app.models.ip_allocation import IPAllocation
+from app.models.region_network_plane import RegionNetworkPlane
 from app.models.user import User
 from app.schemas.excel import ImportConfirmRequest, ImportError, ImportResultResponse
 from app.services import excel as excel_service
@@ -74,27 +74,25 @@ def export_excel(
     plane_type_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """导出 IP 分配数据到 Excel。"""
-    query = db.query(IPAllocation)
+    """导出 Region 网络平面数据到 Excel。"""
+    query = db.query(RegionNetworkPlane)
     if region_id:
-        query = query.filter(IPAllocation.region_id == region_id)
+        query = query.filter(RegionNetworkPlane.region_id == region_id)
     if plane_type_id:
-        query = query.filter(IPAllocation.plane_type_id == plane_type_id)
+        query = query.filter(RegionNetworkPlane.plane_type_id == plane_type_id)
 
-    allocations = query.order_by(IPAllocation.created_at.desc()).all()
+    planes = query.order_by(RegionNetworkPlane.created_at.desc()).all()
 
     data = []
-    for a in allocations:
+    for plane in planes:
         data.append(
             {
-                "region_name": a.region.name if a.region else "",
-                "plane_type_name": a.plane_type.name if a.plane_type else "",
-                "ip_range": a.ip_range,
-                "vlan_id": a.vlan_id,
-                "gateway": a.gateway or "",
-                "subnet_mask": a.subnet_mask or "",
-                "purpose": a.purpose or "",
-                "status": a.status,
+                "region_name": plane.region.name if plane.region else "",
+                "plane_type_name": plane.plane_type.name if plane.plane_type else "",
+                "ip_range": plane.cidr or "",
+                "vlan_id": plane.vlan_id,
+                "gateway_position": plane.gateway_position or "",
+                "gateway_ip": plane.gateway_ip or "",
             }
         )
 

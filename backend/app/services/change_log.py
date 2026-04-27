@@ -22,7 +22,7 @@ def log_change(
 
     Args:
         db: 数据库会话。
-        entity_type: 实体类型（如 region、ip_allocation）。
+        entity_type: 实体类型（如 region、region_network_plane）。
         entity_id: 实体 ID。
         action: 操作类型（create、update、delete、import）。
         operator: 操作者名称。

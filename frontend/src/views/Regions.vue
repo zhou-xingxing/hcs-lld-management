@@ -3,7 +3,7 @@
     <div class="page-heading">
       <div>
         <h2 class="page-title">区域管理</h2>
-        <p class="page-desc">管理所有 HCS 云平台区域，查看和配置各区域的网络平面与 IP 分配</p>
+        <p class="page-desc">管理所有 HCS 云平台区域，查看和配置各区域的网络平面</p>
       </div>
       <el-button v-if="appStore.isAdministrator" type="primary" @click="showCreateDialog" :icon="Plus">添加区域</el-button>
     </div>
@@ -23,7 +23,6 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="allocation_count" label="IP分配数" width="120" align="center" />
         <el-table-column prop="created_at" label="创建时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>

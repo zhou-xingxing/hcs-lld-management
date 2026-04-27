@@ -24,7 +24,6 @@ class RegionUpdate(BaseModel):
 class RegionResponse(RegionBase):
     id: str
     plane_count: int = 0
-    allocation_count: int = 0
     created_at: str
     updated_at: str
 
@@ -47,7 +46,6 @@ class RegionPlaneResponse(BaseModel):
     gateway_ip_warning: str | None = None
     parent_id: str | None = None
     plane_type_parent_id: str | None = None
-    allocation_count: int = 0
     created_at: str
     updated_at: str
     children: list["RegionPlaneResponse"] = []

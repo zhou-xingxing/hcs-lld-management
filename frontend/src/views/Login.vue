@@ -5,7 +5,7 @@
         <div class="brand-mark">HCS</div>
         <div>
           <h1>HCS LLD 管理系统</h1>
-          <p>Region 网络平面 IP 地址分配管理</p>
+          <p>Region 网络平面地址规划管理</p>
         </div>
       </div>
 

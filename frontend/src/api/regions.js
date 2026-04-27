@@ -31,19 +31,3 @@ export function enableRegionPlane(regionId, data) {
 export function disableRegionPlane(regionId, planeId) {
   return request.delete(`/regions/${regionId}/planes/${planeId}`)
 }
-
-export function fetchRegionAllocations(regionId, params) {
-  return request.get(`/regions/${regionId}/allocations`, { params })
-}
-
-export function createAllocation(regionId, data) {
-  return request.post(`/regions/${regionId}/allocations`, data)
-}
-
-export function updateAllocation(id, data) {
-  return request.put(`/allocations/${id}`, data)
-}
-
-export function deleteAllocation(id) {
-  return request.delete(`/allocations/${id}`)
-}

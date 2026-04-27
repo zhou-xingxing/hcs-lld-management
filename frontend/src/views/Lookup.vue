@@ -38,20 +38,13 @@
           <el-tag size="small" effect="plain" type="info">共 {{ total }} 条匹配</el-tag>
         </div>
       </template>
-      <el-table :data="results" stripe v-loading="searching" empty-text="未找到匹配的IP分配">
-        <el-table-column prop="ip_range" label="IP地址段" width="160" />
+      <el-table :data="results" stripe v-loading="searching" empty-text="未找到匹配的网络平面">
+        <el-table-column prop="cidr" label="IP地址段" width="160" />
         <el-table-column prop="region_name" label="所属区域" width="160" />
         <el-table-column prop="plane_type_name" label="网络平面" width="120" />
         <el-table-column prop="vlan_id" label="VLAN ID" width="90" align="center" />
-        <el-table-column prop="gateway" label="网关" width="140" />
-        <el-table-column prop="purpose" label="用途" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="status" label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : row.status === 'reserved' ? 'warning' : 'info'" size="small" effect="plain">
-              {{ row.status === 'active' ? '已使用' : row.status === 'reserved' ? '已预留' : '已废弃' }}
-            </el-tag>
-          </template>
-        </el-table-column>
+        <el-table-column prop="gateway_position" label="网关位置" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="gateway_ip" label="网关IP" width="140" />
       </el-table>
     </el-card>
 

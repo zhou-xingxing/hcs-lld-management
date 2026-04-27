@@ -12,7 +12,6 @@ from app.models import (
     BackupConfig,
     BackupRecord,
     ChangeLog,
-    IPAllocation,
     NetworkPlaneType,
     Region,
     RegionNetworkPlane,

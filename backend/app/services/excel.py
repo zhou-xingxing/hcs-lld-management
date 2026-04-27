@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import timedelta
 from threading import Lock
@@ -8,10 +7,9 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.ip_allocation import IPAllocation
-from app.services.change_log import log_change
+from app.services.region_plane import enable_plane_for_region
 from app.utils.excel_utils import parse_excel
-from app.utils.ip_utils import find_overlapping, parse_cidr
+from app.utils.ip_utils import parse_cidr, parse_ip
 from app.utils.time_utils import utcnow
 
 # In-memory import preview cache
@@ -68,8 +66,8 @@ def get_preview_region_ids(preview_id: str) -> Optional[set[str]]:
 def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
     """解析导入文件并校验数据，返回预览结果。
 
-    校验内容：Region 和网络平面类型是否存在、是否已启用、
-    CIDR 格式、状态值是否合法。
+    校验内容：Region 和网络平面类型是否存在、CIDR 格式、
+    VLAN ID 范围、网关 IP 格式是否合法。
 
     Args:
         file_bytes: Excel 文件的二进制内容。
@@ -81,7 +79,6 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
     """
     from app.models.network_plane_type import NetworkPlaneType
     from app.models.region import Region
-    from app.models.region_network_plane import RegionNetworkPlane
 
     parsed_rows = parse_excel(file_bytes)
     valid_rows = []
@@ -90,7 +87,6 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
     # Preload lookup data
     all_regions = {r.name: r.id for r in db.query(Region).all()}
     all_plane_types = {pt.name: pt.id for pt in db.query(NetworkPlaneType).all()}
-    enabled_planes = {(rp.region_id, rp.plane_type_id) for rp in db.query(RegionNetworkPlane).all()}
 
     for row in parsed_rows:
         row_errors = []
@@ -101,10 +97,6 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
             row_errors.append(f"区域不存在: {row['region_name']}")
         if not plane_type_id:
             row_errors.append(f"网络平面类型不存在: {row['plane_type_name']}")
-        if region_id and plane_type_id:
-            if (region_id, plane_type_id) not in enabled_planes:
-                row_errors.append(f"区域未启用该网络平面: {row['region_name']}/{row['plane_type_name']}")
-
         if not row["ip_range"]:
             row_errors.append("IP地址段不能为空")
         else:
@@ -112,9 +104,10 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
             if not net:
                 row_errors.append(f"无效CIDR: {row['ip_range']}")
 
-        # Validate status
-        if row["status"] not in ("active", "reserved", "deprecated"):
-            row_errors.append(f"无效状态值: {row['status']}")
+        if row["vlan_id"] is not None and not 1 <= row["vlan_id"] <= 4094:
+            row_errors.append(f"无效 VLAN ID: {row['vlan_id']}")
+        if row["gateway_ip"] and not parse_ip(row["gateway_ip"]):
+            row_errors.append(f"无效网关IP: {row['gateway_ip']}")
 
         if row_errors:
             error_rows.append({"row": row["row_number"], "errors": row_errors})
@@ -141,10 +134,8 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
                 "plane_type_name": r["plane_type_name"],
                 "ip_range": r["ip_range"],
                 "vlan_id": r["vlan_id"],
-                "gateway": r["gateway"],
-                "subnet_mask": r["subnet_mask"],
-                "purpose": r["purpose"],
-                "status": r["status"],
+                "gateway_position": r["gateway_position"],
+                "gateway_ip": r["gateway_ip"],
             }
             for r in parsed_rows
         ],
@@ -154,7 +145,7 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
 def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any]:
     """确认执行导入，将预览数据写入数据库。
 
-    逐行写入，每行都会与已有分配做重叠检测。
+    逐行启用 Region 网络平面。
     已过期的预览数据会被拒绝导入。
 
     Args:
@@ -179,48 +170,15 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
 
     for row in rows:
         try:
-            # Check overlap against existing allocations in the same region+plane
-            existing_cidrs = [
-                r[0]
-                for r in db.query(IPAllocation.ip_range)
-                .filter(
-                    IPAllocation.region_id == row["_region_id"],
-                    IPAllocation.plane_type_id == row["_plane_type_id"],
-                )
-                .all()
-            ]
-            overlapped = find_overlapping(row["ip_range"], existing_cidrs)
-            if overlapped:
-                errors.append({"row": row["row_number"], "errors": [f"与现有分配重叠: {', '.join(overlapped)}"]})
-                continue
-
-            allocation = IPAllocation(
-                region_id=row["_region_id"],
-                plane_type_id=row["_plane_type_id"],
-                ip_range=row["ip_range"],
-                vlan_id=row["vlan_id"],
-                gateway=row.get("gateway"),
-                subnet_mask=row.get("subnet_mask"),
-                purpose=row.get("purpose", ""),
-                status=row.get("status", "active"),
-            )
-            db.add(allocation)
-            db.flush()
-
-            log_change(
+            enable_plane_for_region(
                 db,
-                entity_type="ip_allocation",
-                entity_id=allocation.id,
-                action="import",
-                operator=operator,
-                new_value=json.dumps(
-                    {
-                        "ip_range": row["ip_range"],
-                        "region_id": row["_region_id"],
-                        "plane_type_id": row["_plane_type_id"],
-                    }
-                ),
-                comment="Excel批量导入",
+                row["_region_id"],
+                row["_plane_type_id"],
+                row["ip_range"],
+                operator,
+                vlan_id=row["vlan_id"],
+                gateway_position=row.get("gateway_position"),
+                gateway_ip=row.get("gateway_ip"),
             )
             imported += 1
         except Exception as e:

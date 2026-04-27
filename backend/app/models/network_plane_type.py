@@ -11,7 +11,6 @@ from app.database import Base
 from app.utils.time_utils import utcnow_db
 
 if TYPE_CHECKING:
-    from app.models.ip_allocation import IPAllocation
     from app.models.region_network_plane import RegionNetworkPlane
 
 
@@ -39,4 +38,3 @@ class NetworkPlaneType(Base):
     )
     children: Mapped[list[NetworkPlaneType]] = relationship("NetworkPlaneType", back_populates="parent")
     region_planes: Mapped[list[RegionNetworkPlane]] = relationship("RegionNetworkPlane", back_populates="plane_type")
-    allocations: Mapped[list[IPAllocation]] = relationship("IPAllocation", back_populates="plane_type")

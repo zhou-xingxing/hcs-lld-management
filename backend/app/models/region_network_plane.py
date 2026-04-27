@@ -11,7 +11,6 @@ from app.database import Base
 from app.utils.time_utils import utcnow_db
 
 if TYPE_CHECKING:
-    from app.models.ip_allocation import IPAllocation
     from app.models.network_plane_type import NetworkPlaneType
     from app.models.region import Region
 
@@ -38,7 +37,3 @@ class RegionNetworkPlane(Base):
     # relationships
     region: Mapped[Region] = relationship("Region", back_populates="region_planes")
     plane_type: Mapped[NetworkPlaneType] = relationship("NetworkPlaneType", back_populates="region_planes")
-    # 此平面节点下的 IP 分配（级联删除：删平面时自动删关联分配）
-    allocations: Mapped[list[IPAllocation]] = relationship(
-        "IPAllocation", back_populates="plane", cascade="all, delete-orphan"
-    )

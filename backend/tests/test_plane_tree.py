@@ -241,64 +241,18 @@ def test_get_plane_tree(client, admin_headers, user_headers_factory):
     assert child_a_node["children"][0]["cidr"] == "10.0.0.0/25"
 
 
-def test_create_allocation_in_child_plane(client, admin_headers, user_headers_factory):
-    """在子平面下创建 IP 分配，并校验 CIDR 在子平面 CIDR 范围内。"""
-    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
-    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
-    _enable_plane(client, region["id"], root_pt["id"], "10.0.0.0/22", user_headers)
-    child = _enable_plane(client, region["id"], child_pt["id"], "10.0.0.0/24", user_headers).json()
-
-    resp = client.post(
-        f"/api/regions/{region['id']}/allocations",
-        json={"plane_type_id": child_pt["id"], "plane_id": child["id"], "ip_range": "10.0.0.0/25"},
-        headers=user_headers,
-    )
-
-    assert resp.status_code == 201
-
-
-def test_create_allocation_overlaps_child_plane(client, admin_headers, user_headers_factory):
-    """IP 分配覆盖子平面 CIDR 应报错。"""
+def test_delete_parent_plane_cascades(client, admin_headers, user_headers_factory):
+    """删除父平面后，子平面也被级联删除。"""
     region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
     child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
     root = _enable_plane(client, region["id"], root_pt["id"], "10.0.0.0/22", user_headers).json()
     _enable_plane(client, region["id"], child_pt["id"], "10.0.0.0/24", user_headers)
-
-    resp = client.post(
-        f"/api/regions/{region['id']}/allocations",
-        json={"plane_type_id": root_pt["id"], "plane_id": root["id"], "ip_range": "10.0.0.0/24"},
-        headers=user_headers,
-    )
-
-    assert resp.status_code == 409
-    assert "重叠" in resp.json()["detail"]
-
-
-def test_delete_parent_plane_cascades(client, admin_headers, user_headers_factory):
-    """删除父平面后，子平面和 IP 分配也被级联删除。"""
-    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
-    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
-    root = _enable_plane(client, region["id"], root_pt["id"], "10.0.0.0/22", user_headers).json()
-    child = _enable_plane(client, region["id"], child_pt["id"], "10.0.0.0/24", user_headers).json()
-
-    client.post(
-        f"/api/regions/{region['id']}/allocations",
-        json={"plane_type_id": child_pt["id"], "plane_id": child["id"], "ip_range": "10.0.0.0/25"},
-        headers=user_headers,
-    )
-    client.post(
-        f"/api/regions/{region['id']}/allocations",
-        json={"plane_type_id": root_pt["id"], "plane_id": root["id"], "ip_range": "10.0.1.0/24"},
-        headers=user_headers,
-    )
 
     resp = client.delete(f"/api/regions/{region['id']}/planes/{root['id']}", headers=user_headers)
 
     assert resp.status_code == 204
     tree_resp = client.get(f"/api/regions/{region['id']}/planes", headers=user_headers)
     assert len(tree_resp.json()) == 0
-    alloc_resp = client.get(f"/api/regions/{region['id']}/allocations", headers=user_headers)
-    assert alloc_resp.json()["total"] == 0
 
 
 def test_delete_nonexistent_plane(client, admin_headers, user_headers_factory):

@@ -34,8 +34,8 @@ def test_parse_valid_excel():
 
     wb = Workbook()
     ws = wb.active
-    ws.append(["区域名称", "网络平面类型", "IP地址段(CIDR)", "VLAN ID", "网关", "子网掩码", "用途", "状态"])
-    ws.append(["TestRegion", "管理平面", "10.0.0.0/24", 100, "10.0.0.1", "255.255.255.0", "Test", "active"])
+    ws.append(["区域名称", "网络平面类型", "IP地址段(CIDR)", "VLAN ID", "网关位置", "网关IP"])
+    ws.append(["TestRegion", "管理平面", "10.0.0.0/24", 100, "SW01 / SW02", "10.0.0.1"])
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -46,4 +46,6 @@ def test_parse_valid_excel():
     assert rows[0]["region_name"] == "TestRegion"
     assert rows[0]["ip_range"] == "10.0.0.0/24"
     assert rows[0]["vlan_id"] == 100
+    assert rows[0]["gateway_position"] == "SW01 / SW02"
+    assert rows[0]["gateway_ip"] == "10.0.0.1"
     wb.close()

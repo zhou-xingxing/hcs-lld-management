@@ -7,14 +7,12 @@ from pydantic import BaseModel
 
 class LookupResult(BaseModel):
     id: str
-    ip_range: str
+    cidr: str
     region_name: str
     plane_type_name: str
     vlan_id: Optional[int] = None
-    gateway: Optional[str] = None
-    subnet_mask: Optional[str] = None
-    purpose: Optional[str] = None
-    status: str
+    gateway_position: Optional[str] = None
+    gateway_ip: Optional[str] = None
 
 
 class LookupResponse(BaseModel):

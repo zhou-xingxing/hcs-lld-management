@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.exceptions import BusinessError
-from app.models.ip_allocation import IPAllocation
 from app.models.region import Region
 from app.schemas.region import RegionCreate, RegionUpdate
 from app.services.change_log import log_change
@@ -76,9 +74,6 @@ def get_region_detail(db: Session, region_id: str) -> Optional[dict[str, Any]]:
         "name": region.name,
         "description": region.description or "",
         "plane_count": _count_planes(plane_tree),
-        "allocation_count": (
-            db.query(func.count(IPAllocation.id)).filter(IPAllocation.region_id == region_id).scalar() or 0
-        ),
         "planes": plane_tree,
         "created_at": format_datetime(region.created_at),
         "updated_at": format_datetime(region.updated_at),

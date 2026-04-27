@@ -15,14 +15,12 @@
 │   │   │   ├── region.py                 # Region 模型
 │   │   │   ├── network_plane_type.py     # 网络平面类型模型
 │   │   │   ├── region_network_plane.py   # Region-平面关联模型
-│   │   │   ├── ip_allocation.py          # IP 分配模型
 │   │   │   └── change_log.py             # 变更日志模型
 │   │   ├── schemas/                      # Pydantic 请求/响应验证
 │   │   │   ├── __init__.py
 │   │   │   ├── common.py                 # 通用响应 (PaginatedResponse)
 │   │   │   ├── region.py                 # Region 相关 Schema
 │   │   │   ├── network_plane_type.py     # 网络平面类型 Schema
-│   │   │   ├── ip_allocation.py          # IP 分配 Schema
 │   │   │   ├── change_log.py             # 变更日志 Schema
 │   │   │   ├── lookup.py                 # IP 查找 Schema
 │   │   │   └── excel.py                  # Excel/统计 Schema
@@ -30,7 +28,7 @@
 │   │   │   ├── __init__.py
 │   │   │   ├── regions.py                # Region + Region-平面关联 API
 │   │   │   ├── network_plane_types.py    # 网络平面类型 API
-│   │   │   ├── allocations.py            # IP 分配 CRUD + IP 查找 API
+│   │   │   ├── lookup.py                 # IP/CIDR 查找 API
 │   │   │   ├── excel.py                  # Excel 导入/导出 API
 │   │   │   ├── change_logs.py            # 变更日志查询 API
 │   │   │   └── stats.py                  # 统计 API
@@ -40,7 +38,6 @@
 │   │   │   ├── region.py                 # Region 业务逻辑
 │   │   │   ├── region_plane.py           # Region-平面关联逻辑
 │   │   │   ├── network_plane_type.py     # 网络平面类型业务逻辑
-│   │   │   ├── allocation.py             # IP 分配业务逻辑 (含CIDR重叠检测)
 │   │   │   └── excel.py                  # Excel 导入预览/确认逻辑
 │   │   └── utils/                        # 工具函数
 │   │       ├── __init__.py
@@ -68,7 +65,7 @@
 │   │   ├── App.vue                       # 根组件
 │   │   ├── api/                          # Axios API 封装
 │   │   │   ├── request.js                # Axios 实例 + 拦截器
-│   │   │   ├── regions.js                # Region + IP 分配 API
+│   │   │   ├── regions.js                # Region + 网络平面 API
 │   │   │   ├── networkPlaneTypes.js      # 网络平面类型 API
 │   │   │   ├── lookup.js                 # IP 查找 API
 │   │   │   └── excel.js                  # Excel 导入/导出 + 统计 + 变更日志 API
@@ -85,7 +82,7 @@
 │   │   └── views/
 │   │       ├── Dashboard.vue             # 仪表盘
 │   │       ├── Regions.vue               # 区域管理
-│   │       ├── RegionDetail.vue          # 区域详情 + IP 分配管理
+│   │       ├── RegionDetail.vue          # 区域详情 + 网络平面管理
 │   │       ├── PlaneTypes.vue            # 网络平面类型管理
 │   │       ├── Lookup.vue                # IP 查找
 │   │       ├── ImportExport.vue          # 导入 / 导出
@@ -170,7 +167,7 @@ python seed.py
 种子数据包含：
 - 2 个 Region："HCS华北-北京"、"HCS华东-上海"
 - 5 种网络平面类型：管理平面、业务平面、存储平面、内部通信平面、BMC平面
-- 7 条 IP 分配，分布在两个 Region 的不同网络平面上
+- 每个 Region 启用示例网络平面，并带有 CIDR、VLAN 和网关信息
 
 ## 快速启动脚本
 
@@ -239,15 +236,14 @@ pre-commit install
 
 ### 测试覆盖说明
 
-共计 37 个测试用例，覆盖 6 个测试套件：
+后端测试覆盖认证、备份、Excel、健康检查、IP 查找、网络平面类型、平面树和 Region CRUD：
 
 | 测试文件 | 用例数 | 覆盖内容 |
 |---|---|---|
 | `test_health.py` | 2 | 健康检查端点 |
 | `test_regions.py` | 7 | Region 创建/列表/搜索/更新/删除/重复检查/不存在 |
-| `test_allocations.py` | 7 | IP 分配 CRUD + 重叠检测 + 无效CIDR + 未启用平面 + CIDR越界 |
 | `test_lookup.py` | 5 | IP 查找/精确CIDR/重叠CIDR/无匹配/无效查询 |
-| `test_plane_tree.py` | 13 | 多级平面树 CRUD + CIDR 约束 + 级联删除 |
+| `test_plane_tree.py` | 17 | 多级平面树 CRUD + CIDR/网关约束 + 级联删除 |
 | `test_excel_utils.py` | 3 | 模板生成/空数据解析/有效数据解析 |
 
 每个测试用例使用独立的内存 SQLite 数据库，互不干扰。
@@ -264,11 +260,10 @@ pre-commit install
 
 1. 先创建**网络平面类型**（如管理平面、业务平面等）— 这是全局字典
 2. 创建 **Region**（如 HCS华北-北京）
-3. 进入 Region 详情页，为该 Region **启用**需要的网络平面类型
-4. 在已启用的网络平面下 **添加 IP 分配**（输入 CIDR、VLAN ID、网关等）
-5. 需要查重时使用 **IP 查找** 功能
-6. 需要批量导入时使用 **导入** 功能（先下载模板填写后上传）
-7. 所有操作在 **变更历史** 中可追溯
+3. 进入 Region 详情页，为该 Region **启用**需要的网络平面类型，并填写 CIDR、VLAN ID、网关位置和网关 IP
+4. 需要查重时使用 **IP 查找** 功能
+5. 需要批量导入时使用 **导入** 功能（先下载模板填写后上传）
+6. 所有操作在 **变更历史** 中可追溯
 
 ## Docker 部署
 

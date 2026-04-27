@@ -11,10 +11,8 @@ class ImportRow(BaseModel):
     plane_type_name: str
     ip_range: str
     vlan_id: Optional[int] = None
-    gateway: Optional[str] = None
-    subnet_mask: Optional[str] = None
-    purpose: Optional[str] = ""
-    status: str = "active"
+    gateway_position: Optional[str] = None
+    gateway_ip: Optional[str] = None
 
 
 class ImportError(BaseModel):
@@ -44,8 +42,8 @@ class ImportResultResponse(BaseModel):
 class StatsResponse(BaseModel):
     total_regions: int
     total_plane_types: int
-    total_allocations: int
+    total_region_planes: int
     total_change_logs: int
-    allocation_by_status: dict[str, int]
-    allocation_by_region: list[dict[str, Any]]
+    plane_by_scope: dict[str, int]
+    plane_by_region: list[dict[str, Any]]
     recent_changes: list[dict[str, Any]]

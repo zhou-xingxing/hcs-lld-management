@@ -14,7 +14,6 @@
             <el-option label="区域" value="region" />
             <el-option label="网络平面类型" value="network_plane_type" />
             <el-option label="区域网络平面" value="region_network_plane" />
-            <el-option label="IP分配" value="ip_allocation" />
           </el-select>
         </el-form-item>
         <el-form-item label="操作类型">
@@ -87,7 +86,7 @@ const filters = reactive({
 })
 
 function entityTypeLabel(t) {
-  const map = { region: '区域', network_plane_type: '网络平面类型', region_network_plane: '区域网络平面', ip_allocation: 'IP分配' }
+  const map = { region: '区域', network_plane_type: '网络平面类型', region_network_plane: '区域网络平面' }
   return map[t] || t
 }
 

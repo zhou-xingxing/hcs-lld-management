@@ -17,7 +17,7 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 |---|---|
 | Region 管理 | 查询、创建、更新、删除云平台 Region |
 | 网络平面自定义 | 可自定义网络平面类型（如管理平面、业务平面、存储平面等），每个 Region 可独立启用/禁用 |
-| IP 分配管理 | 管理每个 Region 下各网络平面的 IP 地址段（CIDR），含 VLAN ID、网关、用途、状态等元数据 |
+| 网络平面地址管理 | 管理每个 Region 下各网络平面的 CIDR、VLAN ID、网关位置和网关 IP |
 | IP 查重 | 给定 IP 地址或 CIDR 地址段，快速检查是否已被分配，返回所属 Region 和网络平面 |
 | Excel 导入 | 按模板格式上传 Excel，支持预览验证后批量导入 |
 | Excel 导出 | 按 Region/网络平面过滤导出为 Excel |
@@ -50,17 +50,17 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 graph TB
     subgraph Frontend["前端 (Vue 3 + Vite)"]
         direction TB
-        FE_Pages["登录 · 仪表盘 · 区域管理 · 网络平面类型管理 · IP 查找<br/>导入/导出 · 变更历史 · 区域详情(IP 分配) · 用户管理"]
+        FE_Pages["登录 · 仪表盘 · 区域管理 · 网络平面类型管理 · IP 查找<br/>导入/导出 · 变更历史 · 区域详情 · 用户管理"]
         FE_Axios["Axios / REST API<br/>自动注入 Authorization: Bearer token"]
         FE_Pages --> FE_Axios
     end
 
     subgraph Backend["后端 (FastAPI)"]
         direction TB
-        Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · allocations+lookup · excel<br/>change-logs · stats · backup"]
+        Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · lookup · excel<br/>change-logs · stats · backup"]
         Deps["Dependencies<br/>Bearer Token 认证 · 角色校验 · Region 授权校验"]
-        Services["Services（业务逻辑层）<br/>auth / region / plane_type / allocation / excel / change_log / backup<br/>· 密码哈希与 token 签发<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
-        Models["Models（SQLAlchemy ORM）<br/>User / UserRegion / Region / NetworkPlaneType / RegionNetworkPlane /<br/>IPAllocation / ChangeLog / BackupConfig / BackupRecord"]
+        Services["Services（业务逻辑层）<br/>auth / region / plane_type / region_plane / excel / change_log / backup<br/>· 密码哈希与 token 签发<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
+        Models["Models（SQLAlchemy ORM）<br/>User / UserRegion / Region / NetworkPlaneType / RegionNetworkPlane /<br/>ChangeLog / BackupConfig / BackupRecord"]
         Routers --> Deps
         Deps --> Services
         Routers --> Services --> Models
@@ -102,9 +102,6 @@ erDiagram
     Region ||--o{ RegionNetworkPlane : "1:N"
     NetworkPlaneType ||--o{ NetworkPlaneType : "self parent-child"
     NetworkPlaneType ||--o{ RegionNetworkPlane : "1:N"
-    Region ||--o{ IPAllocation : "1:N"
-    NetworkPlaneType ||--o{ IPAllocation : "1:N"
-    RegionNetworkPlane ||--o{ IPAllocation : "1:N"
 
     User {
         string id PK
@@ -148,21 +145,9 @@ erDiagram
         string region_id FK
         string plane_type_id FK
         string cidr
-        datetime created_at
-        datetime updated_at
-    }
-
-    IPAllocation {
-        string id PK
-        string region_id FK
-        string plane_type_id FK
-        string plane_id FK
-        string ip_range
         int    vlan_id
-        string gateway
-        string subnet_mask
-        text   purpose
-        string status
+        string gateway_position
+        string gateway_ip
         datetime created_at
         datetime updated_at
     }
@@ -284,26 +269,7 @@ erDiagram
 
 Region 维度的网络平面启用和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。
 
-`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息，与具体 IP 分配记录中的 VLAN/网关字段相互独立。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。
-
-#### ip_allocations
-
-| 字段 | 类型 | 约束 | 说明 |
-|---|---|---|---|
-| id | String(36) UUID | PK | UUID v4 |
-| region_id | String(36) | FK -> regions.id, CASCADE, INDEX | 所属 Region（反范式化） |
-| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE, INDEX | 所属网络平面类型 |
-| plane_id | String(36) | FK -> region_network_planes.id, CASCADE, INDEX, NULLABLE | 归属的平面节点（精确到树中具体节点） |
-| ip_range | String(43) | NOT NULL | CIDR 表示法，如 "10.0.0.0/24" |
-| vlan_id | Integer | NULLABLE | VLAN 标识 |
-| gateway | String(39) | NULLABLE | 网关地址 |
-| subnet_mask | String(15) | NULLABLE | 子网掩码 |
-| purpose | Text | NULLABLE | 用途描述 |
-| status | String(20) | default='active' | active/reserved/deprecated |
-| created_at | DateTime | NOT NULL | 创建时间 |
-| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
-
-**设计决策**：`region_id` 在此表反范式化存储。虽然 `ip_range` 通过 `plane_type_id` 已间接关联 Region，但直接存储 `region_id` 可避免频繁 JOIN，加速 CIDR 查找。`plane_id` 精确关联到 `RegionNetworkPlane` 树中的具体节点，用于平面级 CIDR 范围校验和重叠检测。应用层保证 `(region_id, plane_type_id)` 必须是有效的 `RegionNetworkPlane`。`plane_id` 可空，兼容历史数据。
+`vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。
 
 #### change_logs
 
@@ -375,8 +341,6 @@ Region 维度的网络平面启用和 CIDR 配置表。树形结构由 `network_
 | GET/POST | `/api/regions` | 列表/创建 Region |
 | GET/PUT/DELETE | `/api/regions/{id}` | Region 详情/更新/删除 |
 | GET/POST | `/api/regions/{id}/planes` | 启用网络平面类型，返回按全局类型树派生的 Region 平面树 |
-| GET/POST | `/api/regions/{region_id}/allocations` | IP 分配列表/创建 |
-| GET/PUT/DELETE | `/api/allocations/{id}` | IP 分配详情/更新/删除 |
 | GET/POST | `/api/network-plane-types` | 列表/创建网络平面类型，支持维护父级类型 |
 | GET/PUT/DELETE | `/api/network-plane-types/{id}` | 类型详情/更新/删除，支持维护父级类型 |
 | GET | `/api/lookup?q={ip_or_cidr}&exact=true` | IP/CIDR 查重 |
@@ -456,7 +420,7 @@ GET /api/backup/records
 | 角色 | 读权限 | 写权限 |
 |---|---|---|
 | administrator | 所有业务数据、配置数据、用户数据 | 用户与权限分配、Region 管理、全局配置（网络平面类型、备份配置等） |
-| user | 所有业务数据、配置数据 | 仅限已授权 Region 内业务数据（网络平面树、IP 分配、Excel 导入确认） |
+| user | 所有业务数据、配置数据 | 仅限已授权 Region 内业务数据（网络平面树、Excel 导入确认） |
 
 权限边界：
 
@@ -479,11 +443,11 @@ GET /api/backup/records
 
 ## 7. 关键技术决策
 
-### 7.1 反范式化 region_id
+### 7.1 RegionNetworkPlane 承载网段
 
-**决策**：在 `IPAllocation` 表直接存储 `region_id` 和 `plane_type_id`。
+**决策**：不再单独维护额外的网段明细表，`RegionNetworkPlane` 本身就是 Region 内的一条网络平面网段记录。
 
-**理由**：标准 CIDR 重叠查询需要 `SELECT * FROM ip_allocations WHERE region_id=? AND plane_type_id=?`，然后在 Python 中进行重叠过滤。直接存储 Region 引用避免了 JOIN 操作。MVP 数据量（< 1000 条）下 Python 端重叠过滤性能足够。
+**理由**：业务上 Region 内启用的网络平面即代表一个具体网段，CIDR、VLAN、网关位置和网关 IP 都属于这条网段记录。移除额外的网段明细层可以减少重复表达，让查询、导入导出和权限边界都围绕 `region_network_planes` 展开。
 
 ### 7.2 Python 端 CIDR 重叠检测
 
@@ -502,7 +466,7 @@ GET /api/backup/records
 1. 启用子类型平面时，父级类型必须已在同一 Region 启用。
 2. 子类型平面的 CIDR 必须落在父级平面的 CIDR 范围内。
 3. 同一父级下已启用的兄弟类型平面 CIDR 不能互相重叠。
-4. 删除某个 Region 下的父平面时，递归删除该 Region 下已启用的所有子类型平面及其 IP 分配。
+4. 删除某个 Region 下的父平面时，递归删除该 Region 下已启用的所有子类型平面。
 5. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id)` 防止同一 Region 重复启用同一个网络平面类型。
 
 **前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；
@@ -572,7 +536,7 @@ GET /api/backup/records
 **角色模型**：
 
 1. `administrator` 管理账号、Region 元数据和全局配置，但不能写 Region 内业务数据。
-2. `user` 可以读取所有数据，只能写自己被授权 Region 内的网络平面树、IP 分配和导入数据。
+2. `user` 可以读取所有数据，只能写自己被授权 Region 内的网络平面树和导入数据。
 
 **理由**：当前系统是内部部署的管理工具，暂不引入 SSO/OIDC 可降低部署复杂度；两类角色与 TODO 中的权限边界一致。Region 授权单独建 `user_regions` 表，既能表达普通 user 的业务归属，也避免把权限规则散落在前端。
 
@@ -585,7 +549,7 @@ GET /api/backup/records
 | `/login` | Login.vue | 登录页 |
 | `/dashboard` | Dashboard.vue | 统计概览仪表盘 |
 | `/regions` | Regions.vue | 区域列表 CRUD |
-| `/regions/:id` | RegionDetail.vue | 区域详情 + 启用全局网络平面类型 + IP 分配 CRUD |
+| `/regions/:id` | RegionDetail.vue | 区域详情 + 启用全局网络平面类型 |
 | `/plane-types` | PlaneTypes.vue | 网络平面类型 CRUD，维护全局父子层级 |
 | `/lookup` | Lookup.vue | IP/CIDR 查重搜索 |
 | `/import-export` | ImportExport.vue | Excel 导入/导出（Tab 页切换） |

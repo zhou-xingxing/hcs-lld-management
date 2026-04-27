@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, SessionLocal, engine
-from app.routers import allocations, auth, backup, change_logs, excel, network_plane_types, regions, stats, users
+from app.routers import auth, backup, change_logs, excel, lookup, network_plane_types, regions, stats, users
 from app.services.auth import ensure_bootstrap_admin
 from app.services.backup_scheduler import backup_scheduler
 
@@ -47,7 +47,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(regions.router)
 app.include_router(network_plane_types.router)
-app.include_router(allocations.router)
+app.include_router(lookup.router)
 app.include_router(excel.router)
 app.include_router(change_logs.router)
 app.include_router(stats.router)

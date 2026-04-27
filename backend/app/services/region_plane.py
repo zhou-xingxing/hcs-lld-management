@@ -3,11 +3,9 @@ from __future__ import annotations
 import ipaddress
 from typing import Any
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.exceptions import BusinessError
-from app.models.ip_allocation import IPAllocation
 from app.models.network_plane_type import NetworkPlaneType
 from app.models.region_network_plane import RegionNetworkPlane
 from app.services.change_log import log_change
@@ -27,7 +25,7 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
 
     Returns:
         树形结构列表，每个节点包含 id、plane_type_id、cidr、
-        parent_id、allocation_count、children 等字段。
+        parent_id、children 等字段。
     """
     all_planes = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.region_id == region_id).all()
 
@@ -35,7 +33,6 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
     plane_dict: dict[str, dict[str, Any]] = {}
     plane_by_type_id = {p.plane_type_id: p for p in all_planes}
     for p in all_planes:
-        alloc_count = db.query(func.count(IPAllocation.id)).filter(IPAllocation.plane_id == p.id).scalar() or 0
         plane_dict[p.id] = {
             "id": p.id,
             "region_id": p.region_id,
@@ -47,7 +44,6 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
             "gateway_ip": p.gateway_ip,
             "parent_id": None,
             "plane_type_parent_id": p.plane_type.parent_id if p.plane_type else None,
-            "allocation_count": alloc_count,
             "created_at": format_datetime(p.created_at),
             "updated_at": format_datetime(p.updated_at),
             "children": [],
@@ -143,13 +139,6 @@ def enable_plane_for_region(
         if overlapped:
             raise BusinessError(f"与兄弟平面 CIDR 重叠: {', '.join(overlapped)}")
 
-        parent_alloc_cidrs = [
-            a.ip_range for a in db.query(IPAllocation).filter(IPAllocation.plane_id == parent_plane.id).all()
-        ]
-        overlapped = find_overlapping(cidr, parent_alloc_cidrs)
-        if overlapped:
-            raise BusinessError(f"与父平面的 IP 分配重叠: {', '.join(overlapped)}")
-
     rp = RegionNetworkPlane(
         region_id=region_id,
         plane_type_id=plane_type_id,
@@ -181,9 +170,8 @@ def create_child_plane(db: Session, region_id: str, parent_id: str, cidr: str, o
 
 
 def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operator: str) -> bool:
-    """删除平面节点，级联删除所有已启用的子类型平面及其 IP 分配。
+    """删除平面节点，级联删除所有已启用的子类型平面。
 
-    级联由数据库 FK CASCADE 和 ORM cascade 共同保证。
     删除前手动记录所有受影响实体的审计日志。
 
     Args:
@@ -208,20 +196,6 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
 
     # 递归收集所有子代平面 ID（用于审计日志）
     descendant_ids = _collect_descendant_ids(db, plane)
-    all_plane_ids = [plane_id] + descendant_ids
-
-    # 审计日志：记录被级联删除的 IP 分配
-    for pid in all_plane_ids:
-        allocs = db.query(IPAllocation).filter(IPAllocation.plane_id == pid).all()
-        for a in allocs:
-            log_change(
-                db,
-                entity_type="ip_allocation",
-                entity_id=a.id,
-                action="delete",
-                operator=operator,
-                old_value=f"由平面 {pid} 删除级联触发",
-            )
 
     # 审计日志：记录被级联删除的子平面
     for child_id in descendant_ids:
