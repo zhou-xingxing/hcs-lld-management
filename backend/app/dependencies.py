@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import cast
-
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
@@ -49,4 +47,4 @@ def ensure_region_business_write_allowed(current_user: User, region_id: str) -> 
 
 def operator_name(current_user: User) -> str:
     """Return the audit operator name for the current user."""
-    return cast(str, current_user.display_name or current_user.username)
+    return current_user.display_name or current_user.username

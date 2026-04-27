@@ -1,6 +1,10 @@
-import uuid
+from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
+import uuid
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.utils.time_utils import utcnow_db
@@ -13,34 +17,34 @@ def gen_uuid() -> str:
 class BackupConfig(Base):
     __tablename__ = "backup_configs"
 
-    id = Column(String(36), primary_key=True, default=gen_uuid)
-    enabled = Column(Boolean, nullable=False, default=False)
-    frequency = Column(String(20), nullable=False, default="daily")
-    schedule_hour = Column(Integer, nullable=False, default=2)
-    schedule_minute = Column(Integer, nullable=False, default=0)
-    schedule_weekday = Column(Integer, nullable=True, default=1)
-    method = Column(String(30), nullable=False, default="local")
-    local_path = Column(String(500), nullable=True)
-    endpoint_url = Column(String(500), nullable=True)
-    access_key = Column(String(200), nullable=True)
-    secret_key = Column(String(500), nullable=True)
-    bucket = Column(String(200), nullable=True)
-    object_prefix = Column(String(300), nullable=True)
-    last_run_at = Column(DateTime, nullable=True)
-    next_run_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=utcnow_db)
-    updated_at = Column(DateTime, nullable=False, default=utcnow_db, onupdate=utcnow_db)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    frequency: Mapped[str] = mapped_column(String(20), nullable=False, default="daily")
+    schedule_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    schedule_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    schedule_weekday: Mapped[int | None] = mapped_column(Integer, nullable=True, default=1)
+    method: Mapped[str] = mapped_column(String(30), nullable=False, default="local")
+    local_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    endpoint_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    access_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    secret_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    bucket: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    object_prefix: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_db)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_db, onupdate=utcnow_db)
 
 
 class BackupRecord(Base):
     __tablename__ = "backup_records"
 
-    id = Column(String(36), primary_key=True, default=gen_uuid)
-    status = Column(String(20), nullable=False, default="running")
-    method = Column(String(30), nullable=False)
-    target = Column(String(800), nullable=True)
-    file_size = Column(Integer, nullable=True)
-    error_message = Column(Text, nullable=True)
-    operator = Column(String(100), nullable=False, default="system")
-    started_at = Column(DateTime, nullable=False, default=utcnow_db)
-    finished_at = Column(DateTime, nullable=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    method: Mapped[str] = mapped_column(String(30), nullable=False)
+    target: Mapped[str | None] = mapped_column(String(800), nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    operator: Mapped[str] = mapped_column(String(100), nullable=False, default="system")
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow_db)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

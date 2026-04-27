@@ -1,10 +1,18 @@
-import uuid
+from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, String, Text
-from sqlalchemy.orm import relationship
+import uuid
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import DateTime, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.utils.time_utils import utcnow_db
+
+if TYPE_CHECKING:
+    from app.models.ip_allocation import IPAllocation
+    from app.models.region_network_plane import RegionNetworkPlane
 
 
 def gen_uuid() -> str:
@@ -14,12 +22,16 @@ def gen_uuid() -> str:
 class Region(Base):
     __tablename__ = "regions"
 
-    id = Column(String(36), primary_key=True, default=gen_uuid)
-    name = Column(String(100), nullable=False, unique=True, index=True)
-    description = Column(Text, nullable=True, default="")
-    created_at = Column(DateTime, nullable=False, default=utcnow_db)
-    updated_at = Column(DateTime, nullable=False, default=utcnow_db, onupdate=utcnow_db)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db, onupdate=utcnow_db)
 
     # relationships
-    region_planes = relationship("RegionNetworkPlane", back_populates="region", cascade="all, delete-orphan")
-    allocations = relationship("IPAllocation", back_populates="region", cascade="all, delete-orphan")
+    region_planes: Mapped[list[RegionNetworkPlane]] = relationship(
+        "RegionNetworkPlane", back_populates="region", cascade="all, delete-orphan"
+    )
+    allocations: Mapped[list[IPAllocation]] = relationship(
+        "IPAllocation", back_populates="region", cascade="all, delete-orphan"
+    )
