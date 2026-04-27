@@ -3,22 +3,20 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user, operator_name, require_administrator
 from app.exceptions import BusinessError
 from app.models.backup import BackupConfig, BackupRecord
+from app.models.user import User
 from app.schemas.backup import BackupConfigResponse, BackupConfigUpdate, BackupRecordResponse
 from app.schemas.common import PaginatedResponse
 from app.services.backup import get_backup_config, list_backup_records, run_backup, update_backup_config
 from app.utils.time_utils import format_datetime
 
-router = APIRouter(prefix="/api/backup", tags=["Backup"])
-
-
-def get_operator(x_operator: str = Header("system")) -> str:
-    return x_operator
+router = APIRouter(prefix="/api/backup", tags=["Backup"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/config", response_model=BackupConfigResponse)
@@ -33,11 +31,11 @@ def get_config_endpoint(db: Session = Depends(get_db)) -> BackupConfigResponse:
 def update_config_endpoint(
     data: BackupConfigUpdate,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(require_administrator),
 ) -> BackupConfigResponse:
     """更新全局备份配置。"""
     try:
-        config = update_backup_config(db, data, operator)
+        config = update_backup_config(db, data, operator_name(current_user))
     except BusinessError as e:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(e))
@@ -48,11 +46,11 @@ def update_config_endpoint(
 @router.post("/run", response_model=BackupRecordResponse, status_code=201)
 def run_backup_endpoint(
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(require_administrator),
 ) -> BackupRecordResponse:
     """立即执行一次备份。"""
     try:
-        record = run_backup(db, operator=operator, scheduled=False)
+        record = run_backup(db, operator=operator_name(current_user), scheduled=False)
     except BusinessError as e:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(e))

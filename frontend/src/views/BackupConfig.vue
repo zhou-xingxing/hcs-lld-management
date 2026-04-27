@@ -5,7 +5,7 @@
         <h2 class="page-title">备份配置</h2>
         <p class="page-desc">配置备份目标、定时任务，查看备份执行历史</p>
       </div>
-      <el-button type="primary" :loading="running" @click="handleRunBackup">
+      <el-button v-if="appStore.isAdministrator" type="primary" :loading="running" @click="handleRunBackup">
         <el-icon style="margin-right: 6px"><FolderChecked /></el-icon>立即备份
       </el-button>
     </div>
@@ -108,7 +108,7 @@
         </el-form-item>
       </el-card>
 
-      <div class="form-actions">
+      <div v-if="appStore.isAdministrator" class="form-actions">
         <el-button type="primary" :loading="saving" @click="handleSave">
           <el-icon style="margin-right: 6px"><Check /></el-icon>保存配置
         </el-button>
@@ -161,12 +161,14 @@
 
 <script setup>
 import { fetchBackupConfig, fetchBackupRecords, runBackup, updateBackupConfig } from '@/api/backup'
+import { useAppStore } from '@/stores/app'
 import { Check, FolderChecked, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { formatDateTime } from '@/utils/time'
 import { computed, onMounted, reactive, ref } from 'vue'
 
 const loading = ref(false)
+const appStore = useAppStore()
 const saving = ref(false)
 const running = ref(false)
 const recordsLoading = ref(false)

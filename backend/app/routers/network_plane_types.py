@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user, operator_name, require_administrator
 from app.exceptions import BusinessError
+from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeResponse, PlaneTypeUpdate
 from app.services.network_plane_type import (
@@ -15,11 +17,11 @@ from app.services.network_plane_type import (
 )
 from app.utils.time_utils import format_datetime
 
-router = APIRouter(prefix="/api/network-plane-types", tags=["Network Plane Types"])
-
-
-def get_operator(x_operator: str = Header("system")) -> str:
-    return x_operator
+router = APIRouter(
+    prefix="/api/network-plane-types",
+    tags=["Network Plane Types"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("", response_model=PaginatedResponse[PlaneTypeResponse])
@@ -48,10 +50,10 @@ def list_plane_types_endpoint(
 def create_plane_type_endpoint(
     data: PlaneTypeCreate,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(require_administrator),
 ) -> PlaneTypeResponse:
     """创建网络平面类型。"""
-    pt = create_plane_type(db, data, operator)
+    pt = create_plane_type(db, data, operator_name(current_user))
     db.commit()
     return PlaneTypeResponse(
         id=pt.id,
@@ -82,10 +84,10 @@ def update_plane_type_endpoint(
     pt_id: str,
     data: PlaneTypeUpdate,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(require_administrator),
 ) -> PlaneTypeResponse:
     """更新网络平面类型。"""
-    pt = update_plane_type(db, pt_id, data, operator)
+    pt = update_plane_type(db, pt_id, data, operator_name(current_user))
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
     db.commit()
@@ -102,11 +104,11 @@ def update_plane_type_endpoint(
 def delete_plane_type_endpoint(
     pt_id: str,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(require_administrator),
 ) -> None:
     """删除网络平面类型。"""
     try:
-        deleted = delete_plane_type(db, pt_id, operator)
+        deleted = delete_plane_type(db, pt_id, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not deleted:

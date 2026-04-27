@@ -18,14 +18,11 @@
         <div class="header-right">
           <div class="operator-area">
             <el-icon><UserFilled /></el-icon>
-            <span class="operator-label">操作者：</span>
-            <el-input
-              v-model="appStore.operator"
-              size="small"
-              style="width: 140px"
-              placeholder="输入名称"
-              @blur="saveOperator"
-            />
+            <span class="operator-label">{{ appStore.currentUser?.display_name || appStore.currentUser?.username }}</span>
+            <el-tag size="small" :type="appStore.isAdministrator ? 'warning' : 'success'">
+              {{ appStore.isAdministrator ? 'administrator' : 'user' }}
+            </el-tag>
+            <el-button size="small" text @click="handleLogout">退出</el-button>
           </div>
         </div>
       </header>
@@ -38,17 +35,19 @@
 
 <script setup>
 import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { UserFilled, Fold, Expand } from '@element-plus/icons-vue'
 import SideMenu from './SideMenu.vue'
 
 const route = useRoute()
+const router = useRouter()
 const appStore = useAppStore()
 const isCollapsed = ref(false)
 
-function saveOperator() {
-  appStore.setOperator(appStore.operator)
+function handleLogout() {
+  appStore.logout()
+  router.push('/login')
 }
 </script>
 

@@ -54,6 +54,10 @@
         <el-icon><Setting /></el-icon>
         <span>备份配置</span>
       </el-menu-item>
+      <el-menu-item v-if="appStore.isAdministrator" index="/users">
+        <el-icon><User /></el-icon>
+        <span>用户管理</span>
+      </el-menu-item>
     </el-menu>
 
     <div class="sidebar-footer">
@@ -65,11 +69,13 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAppStore } from '@/stores/app'
 import {
-  DataAnalysis, Location, Connection, Search, Upload, Clock, Setting
+  DataAnalysis, Location, Connection, Search, Upload, Clock, Setting, User
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
+const appStore = useAppStore()
 const activeMenu = computed(() => route.path)
 </script>
 

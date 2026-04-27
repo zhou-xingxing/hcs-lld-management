@@ -4,6 +4,7 @@ from app.models.ip_allocation import IPAllocation
 from app.models.network_plane_type import NetworkPlaneType
 from app.models.region import Region
 from app.models.region_network_plane import RegionNetworkPlane
+from app.models.user import User, UserRegion
 
 __all__ = [
     "Region",
@@ -13,4 +14,6 @@ __all__ = [
     "ChangeLog",
     "BackupConfig",
     "BackupRecord",
+    "User",
+    "UserRegion",
 ]

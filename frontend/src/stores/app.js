@@ -1,18 +1,52 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 export const useAppStore = defineStore('app', () => {
-  const operator = ref(localStorage.getItem('hcs_operator') || 'admin')
+  const token = ref(localStorage.getItem('hcs_token') || '')
+  const currentUser = ref(JSON.parse(localStorage.getItem('hcs_current_user') || 'null'))
   const sidebarCollapsed = ref(false)
+  const isAuthenticated = computed(() => Boolean(token.value))
+  const isAdministrator = computed(() => currentUser.value?.role === 'administrator')
+  const assignedRegionIds = computed(() => new Set((currentUser.value?.regions || []).map((item) => item.id)))
 
-  function setOperator(name) {
-    operator.value = name
-    localStorage.setItem('hcs_operator', name)
+  function setSession(accessToken, user) {
+    token.value = accessToken
+    currentUser.value = user
+    localStorage.setItem('hcs_token', accessToken)
+    localStorage.setItem('hcs_current_user', JSON.stringify(user))
+  }
+
+  function setCurrentUser(user) {
+    currentUser.value = user
+    localStorage.setItem('hcs_current_user', JSON.stringify(user))
+  }
+
+  function logout() {
+    token.value = ''
+    currentUser.value = null
+    localStorage.removeItem('hcs_token')
+    localStorage.removeItem('hcs_current_user')
   }
 
   function toggleSidebar() {
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
-  return { operator, sidebarCollapsed, setOperator, toggleSidebar }
+  function canManageRegionBusiness(regionId) {
+    return currentUser.value?.role === 'user' && assignedRegionIds.value.has(regionId)
+  }
+
+  return {
+    token,
+    currentUser,
+    sidebarCollapsed,
+    isAuthenticated,
+    isAdministrator,
+    assignedRegionIds,
+    setSession,
+    setCurrentUser,
+    logout,
+    toggleSidebar,
+    canManageRegionBusiness,
+  }
 })

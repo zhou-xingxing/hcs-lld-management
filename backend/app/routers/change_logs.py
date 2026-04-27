@@ -5,12 +5,13 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models.change_log import ChangeLog
 from app.schemas.change_log import ChangeLogResponse
 from app.schemas.common import PaginatedResponse
 from app.utils.time_utils import format_datetime
 
-router = APIRouter(prefix="/api/change-logs", tags=["Change Logs"])
+router = APIRouter(prefix="/api/change-logs", tags=["Change Logs"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=PaginatedResponse[ChangeLogResponse])

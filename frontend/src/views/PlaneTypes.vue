@@ -5,7 +5,7 @@
         <h2 class="page-title">网络平面类型</h2>
         <p class="page-desc">全局网络平面类型字典，所有 Region 共享此配置</p>
       </div>
-      <el-button type="primary" @click="showCreateDialog" :icon="Plus">添加类型</el-button>
+      <el-button v-if="appStore.isAdministrator" type="primary" @click="showCreateDialog" :icon="Plus">添加类型</el-button>
     </div>
 
     <el-card shadow="never">
@@ -24,7 +24,7 @@
         <el-table-column prop="created_at" label="创建时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column v-if="appStore.isAdministrator" label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="warning" link @click="showEditDialog(row)">
               <el-icon style="margin-right: 3px"><Edit /></el-icon>编辑
@@ -70,11 +70,13 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { fetchPlaneTypes, createPlaneType, updatePlaneType, deletePlaneType } from '@/api/networkPlaneTypes'
+import { useAppStore } from '@/stores/app'
 import { ElMessage } from 'element-plus'
 import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/time'
 
 const loading = ref(false)
+const appStore = useAppStore()
 const items = ref([])
 const total = ref(0)
 const page = ref(1)

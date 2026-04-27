@@ -32,7 +32,6 @@ class ImportPreviewResponse(BaseModel):
 
 class ImportConfirmRequest(BaseModel):
     preview_id: str
-    operator: str
 
 
 class ImportResultResponse(BaseModel):

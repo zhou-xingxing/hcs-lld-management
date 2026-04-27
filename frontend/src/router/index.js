@@ -1,7 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import { fetchCurrentUser } from '@/api/auth'
+import { useAppStore } from '@/stores/app'
 
 const routes = [
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/Login.vue'),
+    meta: { public: true, title: '登录' },
+  },
   {
     path: '/',
     component: AppLayout,
@@ -56,6 +64,12 @@ const routes = [
         component: () => import('@/views/BackupConfig.vue'),
         meta: { title: '备份配置' },
       },
+      {
+        path: 'users',
+        name: 'Users',
+        component: () => import('@/views/Users.vue'),
+        meta: { title: '用户管理', adminOnly: true },
+      },
     ],
   },
 ]
@@ -63,6 +77,32 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+router.beforeEach(async (to) => {
+  const appStore = useAppStore()
+  if (to.meta.public) {
+    if (to.path === '/login' && appStore.isAuthenticated) {
+      return to.query.redirect || '/dashboard'
+    }
+    return true
+  }
+  if (!appStore.isAuthenticated) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  if (!appStore.currentUser) {
+    try {
+      const user = await fetchCurrentUser()
+      appStore.setCurrentUser(user)
+    } catch {
+      appStore.logout()
+      return { path: '/login', query: { redirect: to.fullPath } }
+    }
+  }
+  if (to.meta.adminOnly && !appStore.isAdministrator) {
+    return '/dashboard'
+  }
+  return true
 })
 
 export default router

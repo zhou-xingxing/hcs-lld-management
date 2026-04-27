@@ -10,8 +10,8 @@ from app.models.region import Region
 from app.services.backup import calculate_next_run, run_due_backup, utcnow
 
 
-def test_get_backup_config_creates_default(client):
-    response = client.get("/api/backup/config")
+def test_get_backup_config_creates_default(client, admin_headers):
+    response = client.get("/api/backup/config", headers=admin_headers)
 
     assert response.status_code == 200
     data = response.json()
@@ -21,10 +21,10 @@ def test_get_backup_config_creates_default(client):
     assert data["secret_key_configured"] is False
 
 
-def test_update_backup_config(client, tmp_path, operator):
+def test_update_backup_config(client, tmp_path, admin_headers):
     response = client.put(
         "/api/backup/config",
-        headers={"X-Operator": operator},
+        headers=admin_headers,
         json={
             "enabled": True,
             "frequency": "weekly",
@@ -47,9 +47,10 @@ def test_update_backup_config(client, tmp_path, operator):
     assert data["next_run_at"] is not None
 
 
-def test_update_backup_config_validates_local_path(client):
+def test_update_backup_config_validates_local_path(client, admin_headers):
     response = client.put(
         "/api/backup/config",
+        headers=admin_headers,
         json={
             "enabled": True,
             "frequency": "daily",
@@ -61,10 +62,10 @@ def test_update_backup_config_validates_local_path(client):
     assert response.status_code == 422
 
 
-def test_run_backup_creates_sqlite_file(client, tmp_path, operator):
+def test_run_backup_creates_sqlite_file(client, tmp_path, admin_headers):
     config_response = client.put(
         "/api/backup/config",
-        headers={"X-Operator": operator},
+        headers=admin_headers,
         json={
             "enabled": False,
             "frequency": "daily",
@@ -76,7 +77,7 @@ def test_run_backup_creates_sqlite_file(client, tmp_path, operator):
     )
     assert config_response.status_code == 200
 
-    response = client.post("/api/backup/run", headers={"X-Operator": operator})
+    response = client.post("/api/backup/run", headers=admin_headers)
 
     assert response.status_code == 201
     data = response.json()
@@ -90,10 +91,10 @@ def test_run_backup_creates_sqlite_file(client, tmp_path, operator):
     assert target.suffix == ".sqlite"
 
 
-def test_list_backup_records(client, tmp_path, operator):
+def test_list_backup_records(client, tmp_path, admin_headers):
     client.put(
         "/api/backup/config",
-        headers={"X-Operator": operator},
+        headers=admin_headers,
         json={
             "enabled": False,
             "frequency": "daily",
@@ -103,9 +104,9 @@ def test_list_backup_records(client, tmp_path, operator):
             "local_path": str(tmp_path),
         },
     )
-    client.post("/api/backup/run", headers={"X-Operator": operator})
+    client.post("/api/backup/run", headers=admin_headers)
 
-    response = client.get("/api/backup/records")
+    response = client.get("/api/backup/records", headers=admin_headers)
 
     assert response.status_code == 200
     data = response.json()

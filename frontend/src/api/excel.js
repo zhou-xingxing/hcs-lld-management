@@ -13,8 +13,8 @@ export function previewImport(file) {
   })
 }
 
-export function confirmImport(previewId, operator) {
-  return request.post('/excel/import/confirm', { preview_id: previewId, operator })
+export function confirmImport(previewId) {
+  return request.post('/excel/import/confirm', { preview_id: previewId })
 }
 
 export function exportExcel(params) {

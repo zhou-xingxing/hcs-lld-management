@@ -1,10 +1,17 @@
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import (
+    ensure_region_business_write_allowed,
+    get_current_user,
+    operator_name,
+    require_administrator,
+)
 from app.exceptions import BusinessError
+from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.region import (
     ChildPlaneCreate,
@@ -29,11 +36,7 @@ from app.services.region_plane import (
 )
 from app.utils.time_utils import format_datetime
 
-router = APIRouter(prefix="/api/regions", tags=["Regions"])
-
-
-def get_operator(x_operator: str = Header("system")) -> str:
-    return x_operator
+router = APIRouter(prefix="/api/regions", tags=["Regions"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=PaginatedResponse[RegionResponse])
@@ -65,11 +68,11 @@ def list_regions_endpoint(
 def create_region_endpoint(
     data: RegionCreate,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(require_administrator),
 ) -> RegionResponse:
     """创建新 Region。"""
     try:
-        region = create_region(db, data, operator)
+        region = create_region(db, data, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     db.commit()
@@ -98,10 +101,10 @@ def update_region_endpoint(
     region_id: str,
     data: RegionUpdate,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(require_administrator),
 ) -> RegionResponse:
     """更新 Region 信息。"""
-    region = update_region(db, region_id, data, operator)
+    region = update_region(db, region_id, data, operator_name(current_user))
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
     db.commit()
@@ -120,10 +123,10 @@ def update_region_endpoint(
 def delete_region_endpoint(
     region_id: str,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(require_administrator),
 ) -> None:
     """删除 Region。"""
-    deleted = delete_region(db, region_id, operator)
+    deleted = delete_region(db, region_id, operator_name(current_user))
     if not deleted:
         raise HTTPException(status_code=404, detail="Region not found")
     db.commit()
@@ -146,7 +149,7 @@ def enable_plane_endpoint(
     region_id: str,
     data: RegionPlaneCreate,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """为 Region 启用根级网络平面。"""
     from app.models.network_plane_type import NetworkPlaneType
@@ -155,11 +158,12 @@ def enable_plane_endpoint(
     region = get_region(db, region_id)
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
+    ensure_region_business_write_allowed(current_user, region_id)
     pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == data.plane_type_id).first()
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
     try:
-        rp = enable_plane_for_region(db, region_id, data.plane_type_id, data.cidr, operator)
+        rp = enable_plane_for_region(db, region_id, data.plane_type_id, data.cidr, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     db.commit()
@@ -180,7 +184,7 @@ def create_child_plane_endpoint(
     plane_id: str,
     data: ChildPlaneCreate,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """在指定父平面下创建子网络平面（最多 3 级嵌套）。"""
     from app.services.region import get_region
@@ -188,8 +192,9 @@ def create_child_plane_endpoint(
     region = get_region(db, region_id)
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
+    ensure_region_business_write_allowed(current_user, region_id)
     try:
-        child = create_child_plane(db, region_id, plane_id, data.cidr, operator)
+        child = create_child_plane(db, region_id, plane_id, data.cidr, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     db.commit()
@@ -208,10 +213,11 @@ def disable_plane_endpoint(
     region_id: str,
     plane_id: str,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(get_current_user),
 ) -> None:
     """删除平面节点（级联删除子平面及 IP 分配）。"""
-    deleted = disable_plane_for_region(db, region_id, plane_id, operator)
+    ensure_region_business_write_allowed(current_user, region_id)
+    deleted = disable_plane_for_region(db, region_id, plane_id, operator_name(current_user))
     if not deleted:
         raise HTTPException(status_code=404, detail="Region plane association not found")
     db.commit()

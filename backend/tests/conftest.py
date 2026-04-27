@@ -3,12 +3,24 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import BackupConfig, BackupRecord, ChangeLog, IPAllocation, NetworkPlaneType, Region, RegionNetworkPlane
+from app.models import (
+    BackupConfig,
+    BackupRecord,
+    ChangeLog,
+    IPAllocation,
+    NetworkPlaneType,
+    Region,
+    RegionNetworkPlane,
+    User,
+    UserRegion,
+)
+from app.services.auth import create_user, ensure_bootstrap_admin
+from app.schemas.user import UserCreate
 
 
 @pytest.fixture
@@ -21,6 +33,11 @@ def test_db():
     )
     Base.metadata.create_all(bind=engine)
     TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    bootstrap_db = TestSessionLocal()
+    try:
+        ensure_bootstrap_admin(bootstrap_db)
+    finally:
+        bootstrap_db.close()
 
     def override_get_db():
         db = TestSessionLocal()
@@ -45,6 +62,41 @@ def client(test_db):
 
 
 @pytest.fixture
+def admin_headers(client):
+    """Authorization headers for the bootstrap administrator."""
+    response = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+    assert response.status_code == 200
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+@pytest.fixture
+def user_headers_factory(test_db, client):
+    """Create a user assigned to Region IDs and return Authorization headers."""
+
+    def _factory(region_ids, username="region-user"):
+        session = Session(test_db)
+        try:
+            create_user(
+                session,
+                UserCreate(
+                    username=username,
+                    password="password",
+                    role="user",
+                    display_name="Region User",
+                    region_ids=list(region_ids),
+                ),
+            )
+            session.commit()
+        finally:
+            session.close()
+        response = client.post("/api/auth/login", json={"username": username, "password": "password"})
+        assert response.status_code == 200
+        return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+    return _factory
+
+
+@pytest.fixture
 def operator():
-    """Default operator for X-Operator header."""
-    return "test-operator"
+    """Default audited operator after authentication."""
+    return "系统管理员"

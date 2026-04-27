@@ -57,6 +57,14 @@ def get_preview(preview_id: str) -> Optional[list[dict[str, Any]]]:
         return None
 
 
+def get_preview_region_ids(preview_id: str) -> Optional[set[str]]:
+    """Return Region IDs covered by a cached import preview."""
+    rows = get_preview(preview_id)
+    if rows is None:
+        return None
+    return {str(row["_region_id"]) for row in rows}
+
+
 def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
     """解析导入文件并校验数据，返回预览结果。
 

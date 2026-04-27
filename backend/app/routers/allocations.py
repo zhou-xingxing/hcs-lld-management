@@ -1,10 +1,12 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import ensure_region_business_write_allowed, get_current_user, operator_name
 from app.exceptions import BusinessError
+from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.ip_allocation import AllocationCreate, AllocationResponse, AllocationUpdate
 from app.schemas.lookup import LookupResponse, LookupResult
@@ -19,11 +21,7 @@ from app.services.lookup import lookup_allocations
 from app.services.region import get_region
 from app.utils.time_utils import format_datetime
 
-router = APIRouter(tags=["Allocations"])
-
-
-def get_operator(x_operator: str = Header("system")) -> str:
-    return x_operator
+router = APIRouter(tags=["Allocations"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/api/regions/{region_id}/allocations", response_model=PaginatedResponse[AllocationResponse])
@@ -52,13 +50,14 @@ def create_allocation_endpoint(
     region_id: str,
     data: AllocationCreate,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(get_current_user),
 ) -> AllocationResponse:
     """创建 IP 分配。"""
     if not get_region(db, region_id):
         raise HTTPException(status_code=404, detail="Region not found")
+    ensure_region_business_write_allowed(current_user, region_id)
     try:
-        allocation = create_allocation(db, region_id, data, operator)
+        allocation = create_allocation(db, region_id, data, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     db.commit()
@@ -111,11 +110,15 @@ def update_allocation_endpoint(
     allocation_id: str,
     data: AllocationUpdate,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(get_current_user),
 ) -> AllocationResponse:
     """更新 IP 分配信息。"""
+    existing = get_allocation(db, allocation_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Allocation not found")
+    ensure_region_business_write_allowed(current_user, existing.region_id)
     try:
-        allocation = update_allocation(db, allocation_id, data, operator)
+        allocation = update_allocation(db, allocation_id, data, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not allocation:
@@ -144,10 +147,14 @@ def update_allocation_endpoint(
 def delete_allocation_endpoint(
     allocation_id: str,
     db: Session = Depends(get_db),
-    operator: str = Depends(get_operator),
+    current_user: User = Depends(get_current_user),
 ) -> None:
     """删除 IP 分配记录。"""
-    deleted = delete_allocation(db, allocation_id, operator)
+    allocation = get_allocation(db, allocation_id)
+    if not allocation:
+        raise HTTPException(status_code=404, detail="Allocation not found")
+    ensure_region_business_write_allowed(current_user, allocation.region_id)
+    deleted = delete_allocation(db, allocation_id, operator_name(current_user))
     if not deleted:
         raise HTTPException(status_code=404, detail="Allocation not found")
     db.commit()

@@ -1,20 +1,18 @@
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import ensure_region_business_write_allowed, get_current_user, operator_name
 from app.models.ip_allocation import IPAllocation
+from app.models.user import User
 from app.schemas.excel import ImportConfirmRequest, ImportError, ImportResultResponse
 from app.services import excel as excel_service
 from app.utils.excel_utils import build_export, generate_template
 
-router = APIRouter(prefix="/api/excel", tags=["Excel"])
-
-
-def get_operator(x_operator: str = Header("system")) -> str:
-    return x_operator
+router = APIRouter(prefix="/api/excel", tags=["Excel"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/template")
@@ -46,9 +44,22 @@ async def preview_import(
 def confirm_import(
     data: ImportConfirmRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ImportResultResponse:
     """确认执行导入预览数据。"""
-    result = excel_service.confirm_import(data.preview_id, data.operator, db)
+    region_ids: set[str] | None = excel_service.get_preview_region_ids(data.preview_id)
+    result: dict[str, Any]
+    if region_ids is None:
+        result = {
+            "success": False,
+            "imported_count": 0,
+            "error_count": 0,
+            "errors": [{"row": 0, "errors": ["预览数据已过期，请重新上传"]}],
+        }
+    else:
+        for region_id in region_ids:
+            ensure_region_business_write_allowed(current_user, region_id)
+        result = excel_service.confirm_import(data.preview_id, operator_name(current_user), db)
     return ImportResultResponse(
         success=result["success"],
         imported_count=result["imported_count"],

@@ -90,7 +90,13 @@
                 <el-table-column prop="status" label="状态" width="80" />
               </el-table>
             </div>
-            <el-button type="success" size="large" @click="confirmImport" :loading="importing" :disabled="previewData.valid_rows === 0">
+            <el-button
+              type="success"
+              size="large"
+              @click="confirmImport"
+              :loading="importing"
+              :disabled="previewData.valid_rows === 0 || !canImport"
+            >
               确认导入 ({{ previewData.valid_rows }} 条)
             </el-button>
           </div>
@@ -133,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { downloadTemplate as downloadTemplateApi, previewImport, confirmImport as confirmImportApi, exportExcel } from '@/api/excel'
 import { fetchRegions } from '@/api/regions'
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
@@ -142,6 +148,7 @@ import { useAppStore } from '@/stores/app'
 import { Download, Upload } from '@element-plus/icons-vue'
 
 const appStore = useAppStore()
+const canImport = computed(() => appStore.currentUser?.role === 'user' && (appStore.currentUser?.regions || []).length > 0)
 const activeTab = ref('import')
 
 const downloading = ref(false)
@@ -192,7 +199,7 @@ async function confirmImport() {
   if (!previewData.value) return
   importing.value = true
   try {
-    importResult.value = await confirmImportApi(previewData.value.preview_id, appStore.operator)
+    importResult.value = await confirmImportApi(previewData.value.preview_id)
     if (importResult.value.imported_count === 0 && importResult.value.error_count > 0) {
       ElMessage.warning('所有行导入失败')
     }

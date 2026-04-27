@@ -5,13 +5,14 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models.change_log import ChangeLog
 from app.models.ip_allocation import IPAllocation
 from app.models.network_plane_type import NetworkPlaneType
 from app.models.region import Region
 from app.utils.time_utils import format_datetime
 
-router = APIRouter(prefix="/api/stats", tags=["Stats"])
+router = APIRouter(prefix="/api/stats", tags=["Stats"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("")

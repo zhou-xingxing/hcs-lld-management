@@ -5,7 +5,7 @@
         <h2 class="page-title">区域管理</h2>
         <p class="page-desc">管理所有 HCS 云平台区域，查看和配置各区域的网络平面与 IP 分配</p>
       </div>
-      <el-button type="primary" @click="showCreateDialog" :icon="Plus">添加区域</el-button>
+      <el-button v-if="appStore.isAdministrator" type="primary" @click="showCreateDialog" :icon="Plus">添加区域</el-button>
     </div>
 
     <el-card shadow="never">
@@ -30,10 +30,10 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" link @click="viewRegion(row)">详情</el-button>
-            <el-button size="small" type="warning" link @click="showEditDialog(row)">
+            <el-button v-if="appStore.isAdministrator" size="small" type="warning" link @click="showEditDialog(row)">
               <el-icon style="margin-right: 3px"><Edit /></el-icon>编辑
             </el-button>
-            <el-popconfirm title="确定删除该区域？" @confirm="handleDelete(row.id)">
+            <el-popconfirm v-if="appStore.isAdministrator" title="确定删除该区域？" @confirm="handleDelete(row.id)">
               <template #reference>
                 <el-button size="small" type="danger" link>
                   <el-icon style="margin-right: 3px"><Delete /></el-icon>删除
@@ -75,11 +75,13 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchRegions, createRegion, updateRegion, deleteRegion } from '@/api/regions'
+import { useAppStore } from '@/stores/app'
 import { ElMessage } from 'element-plus'
 import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/time'
 
 const router = useRouter()
+const appStore = useAppStore()
 const loading = ref(false)
 const regions = ref([])
 const total = ref(0)

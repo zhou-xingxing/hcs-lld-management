@@ -6,7 +6,7 @@
         <h2 class="page-title">{{ region.name }}</h2>
         <p class="page-desc">区域详情与 IP 分配管理</p>
       </div>
-      <div class="header-actions">
+      <div v-if="appStore.isAdministrator" class="header-actions">
         <el-button size="small" plain @click="editRegion">
           <el-icon><Edit /></el-icon>编辑
         </el-button>
@@ -38,7 +38,7 @@
       <template #header>
         <div class="card-header">
           <span class="card-title">已启用的网络平面</span>
-          <div class="header-actions" style="gap: 8px">
+          <div v-if="canManageBusiness" class="header-actions" style="gap: 8px">
             <el-select v-model="newPlaneTypeId" placeholder="选择网络平面类型" size="small" style="width: 180px" clearable>
               <el-option
                 v-for="pt in availablePlaneTypes"
@@ -66,7 +66,7 @@
               <span class="plane-type-name">{{ data.plane_type_name }}</span>
               <el-tag size="small" type="info" effect="plain" class="plane-cidr-tag">{{ data.cidr }}</el-tag>
               <span class="plane-alloc-count">{{ data.allocation_count }} 分配</span>
-              <span class="plane-actions">
+              <span v-if="canManageBusiness" class="plane-actions">
                 <el-button size="small" text type="primary" @click.stop="showCreateChild(data)">添加子网</el-button>
                 <el-popconfirm
                   title="确定删除此平面？其所有子平面和 IP 分配也将被一并删除"
@@ -100,7 +100,7 @@
               clearable
               @change="fetchAllocations"
             />
-            <el-button size="small" type="primary" @click="showCreateAllocation" :icon="Plus">添加分配</el-button>
+            <el-button v-if="canManageBusiness" size="small" type="primary" @click="showCreateAllocation" :icon="Plus">添加分配</el-button>
           </div>
         </div>
       </template>
@@ -116,7 +116,7 @@
             <el-tag :type="statusTag(row.status)" size="small" effect="plain">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column v-if="canManageBusiness" label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="warning" link @click="showEditAllocation(row)">编辑</el-button>
             <el-popconfirm title="确定删除此IP分配？" @confirm="handleDeleteAllocation(row.id)">
@@ -216,12 +216,14 @@ import {
   fetchRegionAllocations, createAllocation, updateAllocation, deleteAllocation
 } from '@/api/regions'
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
+import { useAppStore } from '@/stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Edit, Delete, Connection, Plus } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/time'
 
 const props = defineProps({ id: String })
 const router = useRouter()
+const appStore = useAppStore()
 
 const loading = ref(false)
 const region = ref({ name: '', planes: [] })
@@ -268,6 +270,7 @@ const allocRules = {
 
 // ---- 计算属性 ----
 const planeTree = computed(() => region.value.planes || [])
+const canManageBusiness = computed(() => appStore.canManageRegionBusiness(props.id))
 
 const desContentStyle = { color: 'var(--color-text-primary)', fontSize: '13px' }
 

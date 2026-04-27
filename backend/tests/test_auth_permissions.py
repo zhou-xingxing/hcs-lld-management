@@ -1,0 +1,91 @@
+from sqlalchemy.orm import Session
+
+from app.models.change_log import ChangeLog
+from app.models.user import User
+
+
+def test_unauthenticated_business_api_returns_401(client):
+    response = client.get("/api/regions")
+    assert response.status_code == 401
+
+
+def test_login_success_and_failure(client):
+    success = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+    assert success.status_code == 200
+    assert success.json()["user"]["role"] == "administrator"
+
+    failure = client.post("/api/auth/login", json={"username": "admin", "password": "wrong"})
+    assert failure.status_code == 401
+
+
+def test_disabled_user_cannot_login(client, test_db):
+    session = Session(test_db)
+    try:
+        admin = session.query(User).filter(User.username == "admin").one()
+        admin.is_active = False
+        session.commit()
+    finally:
+        session.close()
+
+    response = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+    assert response.status_code == 401
+
+
+def test_invalid_token_returns_401(client):
+    response = client.get("/api/regions", headers={"Authorization": "Bearer invalid"})
+    assert response.status_code == 401
+
+
+def test_user_can_read_all_but_only_write_assigned_region(client, admin_headers, user_headers_factory):
+    region_a = client.post("/api/regions", json={"name": "A"}, headers=admin_headers).json()
+    region_b = client.post("/api/regions", json={"name": "B"}, headers=admin_headers).json()
+    pt = client.post("/api/network-plane-types", json={"name": "管理平面"}, headers=admin_headers).json()
+    user_headers = user_headers_factory([region_a["id"]])
+
+    read_response = client.get("/api/regions", headers=user_headers)
+    assert read_response.status_code == 200
+    assert read_response.json()["total"] == 2
+
+    allowed = client.post(
+        f"/api/regions/{region_a['id']}/planes",
+        json={"plane_type_id": pt["id"], "cidr": "10.0.0.0/22"},
+        headers=user_headers,
+    )
+    assert allowed.status_code == 201
+
+    denied = client.post(
+        f"/api/regions/{region_b['id']}/planes",
+        json={"plane_type_id": pt["id"], "cidr": "10.1.0.0/22"},
+        headers=user_headers,
+    )
+    assert denied.status_code == 403
+
+
+def test_administrator_cannot_write_region_business_data(client, admin_headers):
+    region = client.post("/api/regions", json={"name": "A"}, headers=admin_headers).json()
+    pt = client.post("/api/network-plane-types", json={"name": "管理平面"}, headers=admin_headers).json()
+
+    response = client.post(
+        f"/api/regions/{region['id']}/planes",
+        json={"plane_type_id": pt["id"], "cidr": "10.0.0.0/22"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_last_administrator_cannot_be_disabled(client, admin_headers):
+    me = client.get("/api/auth/me", headers=admin_headers).json()
+    response = client.put(f"/api/users/{me['id']}", json={"is_active": False}, headers=admin_headers)
+    assert response.status_code == 409
+
+
+def test_audit_operator_comes_from_authenticated_user(client, admin_headers, test_db):
+    client.post("/api/regions", json={"name": "Audit"}, headers={**admin_headers, "X-Operator": "spoofed"})
+
+    session = Session(test_db)
+    try:
+        entry = session.query(ChangeLog).filter(ChangeLog.entity_type == "region").one()
+        assert entry.operator == "系统管理员"
+    finally:
+        session.close()
