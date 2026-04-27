@@ -174,6 +174,8 @@ def enable_plane_endpoint(
         "plane_type_name": pt.name,
         "cidr": rp.cidr,
         "parent_id": rp.parent_id,
+        "created_at": format_datetime(rp.created_at),
+        "updated_at": format_datetime(rp.updated_at),
         "children": [],
     }
 
@@ -204,6 +206,8 @@ def create_child_plane_endpoint(
         "plane_type_id": child.plane_type_id,
         "cidr": child.cidr,
         "parent_id": child.parent_id,
+        "created_at": format_datetime(child.created_at),
+        "updated_at": format_datetime(child.updated_at),
         "children": [],
     }
 

@@ -139,6 +139,7 @@ erDiagram
         bool   is_private
         string vrf
         datetime created_at
+        datetime updated_at
     }
 
     RegionNetworkPlane {
@@ -148,6 +149,7 @@ erDiagram
         string cidr
         string parent_id FK
         datetime created_at
+        datetime updated_at
     }
 
     IPAllocation {
@@ -261,6 +263,7 @@ erDiagram
 | is_private | Boolean | NOT NULL, default=false | 是否私网 |
 | vrf | String(100) | NULLABLE | 所属 VRF |
 | created_at | DateTime | NOT NULL | 创建时间 |
+| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
 全局目录表，所有 Region 共享。
 
@@ -274,6 +277,7 @@ erDiagram
 | cidr | String(43) | NULLABLE | CIDR 地址段，如 "10.0.0.0/22" |
 | parent_id | String(36) | FK -> self.id, CASCADE, NULLABLE | 父平面节点 ID，NULL 表示根节点 |
 | created_at | DateTime | NOT NULL | 创建时间 |
+| updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
 多对多关联表，同时作为树状结构节点，支持最多 3 级嵌套。`parent_id` 自引用实现层级关系，`cidr` 定义该平面节点的地址段范围。子平面的 CIDR 必须是父平面的子网段。
 

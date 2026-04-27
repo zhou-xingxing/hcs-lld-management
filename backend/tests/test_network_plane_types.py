@@ -18,6 +18,7 @@ def test_create_plane_type_with_private_and_vrf(client, admin_headers):
     assert data["name"] == "管理平面"
     assert data["is_private"] is True
     assert data["vrf"] == "vrf-mgmt"
+    assert data["updated_at"]
 
 
 def test_update_plane_type_private_and_clear_vrf(client, admin_headers):
@@ -37,6 +38,7 @@ def test_update_plane_type_private_and_clear_vrf(client, admin_headers):
     data = response.json()
     assert data["is_private"] is False
     assert data["vrf"] is None
+    assert data["updated_at"]
 
 
 def test_plane_type_defaults_private_to_false(client, admin_headers):

@@ -11,6 +11,7 @@ from app.models.network_plane_type import NetworkPlaneType
 from app.models.region_network_plane import RegionNetworkPlane
 from app.services.change_log import log_change
 from app.utils.ip_utils import find_overlapping, parse_cidr
+from app.utils.time_utils import format_datetime
 
 
 def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
@@ -41,6 +42,8 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
             "cidr": p.cidr,
             "parent_id": p.parent_id,
             "allocation_count": alloc_count,
+            "created_at": format_datetime(p.created_at),
+            "updated_at": format_datetime(p.updated_at),
             "children": [],
         }
 

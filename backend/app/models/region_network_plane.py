@@ -24,6 +24,7 @@ class RegionNetworkPlane(Base):
     # 父平面节点 ID，自引用 FK；nullable 表示根节点
     parent_id = Column(String(36), ForeignKey("region_network_planes.id", ondelete="CASCADE"), nullable=True)
     created_at = Column(DateTime, nullable=False, default=utcnow_db)
+    updated_at = Column(DateTime, nullable=False, default=utcnow_db, onupdate=utcnow_db)
 
     # relationships
     region = relationship("Region", back_populates="region_planes")

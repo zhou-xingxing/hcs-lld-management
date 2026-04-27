@@ -27,6 +27,7 @@ def test_create_root_plane_with_cidr(client, admin_headers, user_headers_factory
     data = resp.json()
     assert data["cidr"] == "10.0.0.0/22"
     assert data["parent_id"] is None
+    assert data["updated_at"]
 
 
 def test_create_root_plane_duplicate(client, admin_headers, user_headers_factory):
@@ -86,6 +87,7 @@ def test_create_child_plane(client, admin_headers, user_headers_factory):
     data = resp.json()
     assert data["cidr"] == "10.0.0.0/24"
     assert data["parent_id"] == parent_id
+    assert data["updated_at"]
 
 
 def test_create_child_outside_parent(client, admin_headers, user_headers_factory):
@@ -206,6 +208,7 @@ def test_get_plane_tree(client, admin_headers, user_headers_factory):
     tree = resp.json()
     assert len(tree) == 1  # 一个根
     assert tree[0]["cidr"] == "10.0.0.0/22"
+    assert tree[0]["updated_at"]
     assert len(tree[0]["children"]) == 2  # 两个子平面
     assert tree[0]["children"][0]["children"][0]["cidr"] == "10.0.0.0/25"  # 孙子
 

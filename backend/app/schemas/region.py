@@ -41,6 +41,8 @@ class RegionPlaneResponse(BaseModel):
     cidr: str | None = None
     parent_id: str | None = None
     allocation_count: int = 0
+    created_at: str
+    updated_at: str
     children: list["RegionPlaneResponse"] = []
 
     model_config = {"from_attributes": True}

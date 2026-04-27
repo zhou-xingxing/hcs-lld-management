@@ -43,6 +43,7 @@ def list_plane_types_endpoint(
                 vrf=pt.vrf,
                 region_count=count_regions_for_plane_type(db, pt.id),
                 created_at=format_datetime(pt.created_at),
+                updated_at=format_datetime(pt.updated_at),
             )
         )
     return PaginatedResponse(items=result, total=total, skip=skip, limit=limit)
@@ -65,6 +66,7 @@ def create_plane_type_endpoint(
         vrf=pt.vrf,
         region_count=0,
         created_at=format_datetime(pt.created_at),
+        updated_at=format_datetime(pt.updated_at),
     )
 
 
@@ -82,6 +84,7 @@ def get_plane_type_endpoint(pt_id: str, db: Session = Depends(get_db)) -> PlaneT
         vrf=pt.vrf,
         region_count=count_regions_for_plane_type(db, pt_id),
         created_at=format_datetime(pt.created_at),
+        updated_at=format_datetime(pt.updated_at),
     )
 
 
@@ -105,6 +108,7 @@ def update_plane_type_endpoint(
         vrf=pt.vrf,
         region_count=count_regions_for_plane_type(db, pt_id),
         created_at=format_datetime(pt.created_at),
+        updated_at=format_datetime(pt.updated_at),
     )
 
 

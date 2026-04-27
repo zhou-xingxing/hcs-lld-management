@@ -20,6 +20,7 @@ class NetworkPlaneType(Base):
     is_private = Column(Boolean, nullable=False, default=False)
     vrf = Column(String(100), nullable=True)
     created_at = Column(DateTime, nullable=False, default=utcnow_db)
+    updated_at = Column(DateTime, nullable=False, default=utcnow_db, onupdate=utcnow_db)
 
     # relationships
     region_planes = relationship("RegionNetworkPlane", back_populates="plane_type")

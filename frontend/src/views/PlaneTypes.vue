@@ -34,6 +34,9 @@
         <el-table-column prop="created_at" label="创建时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
+        <el-table-column prop="updated_at" label="更新时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
+        </el-table-column>
         <el-table-column v-if="appStore.isAdministrator" label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="warning" link @click="showEditDialog(row)">
