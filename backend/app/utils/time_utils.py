@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, overload
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import settings
@@ -33,6 +33,15 @@ def to_utc(value: datetime) -> datetime:
 def to_db_datetime(value: datetime) -> datetime:
     """将 datetime 转为数据库存储使用的 naive UTC。"""
     return to_utc(value).replace(tzinfo=None)
+
+
+# 帮助类型检查器区分：datetime 返回 str，None 返回 None。
+@overload
+def format_datetime(value: datetime) -> str: ...
+
+
+@overload
+def format_datetime(value: None) -> None: ...
 
 
 def format_datetime(value: Optional[datetime]) -> Optional[str]:
