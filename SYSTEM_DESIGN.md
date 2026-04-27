@@ -119,8 +119,8 @@ erDiagram
 
     UserRegion {
         string id PK
-        string user_id FK
-        string region_id FK
+        string user_id FK "UK(user_id, region_id)"
+        string region_id FK "UK(user_id, region_id)"
         datetime created_at
     }
 
@@ -136,6 +136,8 @@ erDiagram
         string id PK
         string name UK
         text   description
+        bool   is_private
+        string vrf
         datetime created_at
     }
 
@@ -235,6 +237,8 @@ erDiagram
 | region_id | String(36) | FK -> regions.id, CASCADE, INDEX | 授权管理的 Region |
 | created_at | DateTime | NOT NULL | 创建时间 |
 
+约束：`UNIQUE(user_id, region_id)`，防止同一个用户重复绑定同一个 Region。
+
 普通 user 的 Region 授权表。`administrator` 不依赖此表获得权限；普通 user 只能写入被授权 Region 的业务数据。
 
 #### regions
@@ -254,6 +258,8 @@ erDiagram
 | id | String(36) UUID | PK | UUID v4 |
 | name | String(100) | NOT NULL, UNIQUE, INDEX | 如 "管理平面" |
 | description | Text | NULLABLE | 描述 |
+| is_private | Boolean | NOT NULL, default=false | 是否私网 |
+| vrf | String(100) | NULLABLE | 所属 VRF |
 | created_at | DateTime | NOT NULL | 创建时间 |
 
 全局目录表，所有 Region 共享。

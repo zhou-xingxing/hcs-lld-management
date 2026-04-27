@@ -78,7 +78,12 @@ def create_plane_type(db: Session, data: PlaneTypeCreate, operator: str) -> Netw
     Returns:
         新创建的 NetworkPlaneType 对象。
     """
-    pt = NetworkPlaneType(name=data.name, description=data.description or "")
+    pt = NetworkPlaneType(
+        name=data.name,
+        description=data.description or "",
+        is_private=data.is_private,
+        vrf=data.vrf or None,
+    )
     db.add(pt)
     db.flush()
     log_change(
@@ -114,6 +119,14 @@ def update_plane_type(db: Session, pt_id: str, data: PlaneTypeUpdate, operator: 
     if data.description is not None and data.description != pt.description:
         changes["description"] = (pt.description or "", data.description or "")
         pt.description = data.description
+    if data.is_private is not None and data.is_private != pt.is_private:
+        changes["is_private"] = (pt.is_private, data.is_private)
+        pt.is_private = data.is_private
+    if "vrf" in data.model_fields_set:
+        new_vrf = data.vrf or None
+        if new_vrf != pt.vrf:
+            changes["vrf"] = (pt.vrf or "", new_vrf or "")
+            pt.vrf = new_vrf
     if changes:
         for field, (old, new) in changes.items():
             log_change(

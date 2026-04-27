@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 class PlaneTypeBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = ""
+    is_private: bool = False
+    vrf: Optional[str] = Field(None, max_length=100)
 
 
 class PlaneTypeCreate(PlaneTypeBase):
@@ -17,6 +19,8 @@ class PlaneTypeCreate(PlaneTypeBase):
 class PlaneTypeUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = None
+    is_private: Optional[bool] = None
+    vrf: Optional[str] = Field(None, max_length=100)
 
 
 class PlaneTypeResponse(PlaneTypeBase):

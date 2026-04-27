@@ -39,6 +39,8 @@ def list_plane_types_endpoint(
                 id=pt.id,
                 name=pt.name,
                 description=pt.description or "",
+                is_private=pt.is_private,
+                vrf=pt.vrf,
                 region_count=count_regions_for_plane_type(db, pt.id),
                 created_at=format_datetime(pt.created_at),
             )
@@ -59,6 +61,8 @@ def create_plane_type_endpoint(
         id=pt.id,
         name=pt.name,
         description=pt.description or "",
+        is_private=pt.is_private,
+        vrf=pt.vrf,
         region_count=0,
         created_at=format_datetime(pt.created_at),
     )
@@ -74,6 +78,8 @@ def get_plane_type_endpoint(pt_id: str, db: Session = Depends(get_db)) -> PlaneT
         id=pt.id,
         name=pt.name,
         description=pt.description or "",
+        is_private=pt.is_private,
+        vrf=pt.vrf,
         region_count=count_regions_for_plane_type(db, pt_id),
         created_at=format_datetime(pt.created_at),
     )
@@ -95,6 +101,8 @@ def update_plane_type_endpoint(
         id=pt.id,
         name=pt.name,
         description=pt.description or "",
+        is_private=pt.is_private,
+        vrf=pt.vrf,
         region_count=count_regions_for_plane_type(db, pt_id),
         created_at=format_datetime(pt.created_at),
     )

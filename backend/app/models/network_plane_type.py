@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, String, Text
+from sqlalchemy import Boolean, Column, DateTime, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -17,6 +17,8 @@ class NetworkPlaneType(Base):
     id = Column(String(36), primary_key=True, default=gen_uuid)
     name = Column(String(100), nullable=False, unique=True, index=True)
     description = Column(Text, nullable=True, default="")
+    is_private = Column(Boolean, nullable=False, default=False)
+    vrf = Column(String(100), nullable=True)
     created_at = Column(DateTime, nullable=False, default=utcnow_db)
 
     # relationships

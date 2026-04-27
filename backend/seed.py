@@ -24,16 +24,16 @@ def seed():
 
         # Create network plane types
         plane_types_data = [
-            ("管理平面", "用于HCS管理节点的网络通信"),
-            ("业务平面", "用于租户业务流量的网络通信"),
-            ("存储平面", "用于存储节点之间的数据同步"),
-            ("内部通信平面", "用于HCS内部组件之间的通信"),
-            ("BMC平面", "用于服务器BMC管理口网络"),
+            ("管理平面", "用于HCS管理节点的网络通信", True, "vrf-mgmt"),
+            ("业务平面", "用于租户业务流量的网络通信", False, None),
+            ("存储平面", "用于存储节点之间的数据同步", True, "vrf-storage"),
+            ("内部通信平面", "用于HCS内部组件之间的通信", True, "vrf-internal"),
+            ("BMC平面", "用于服务器BMC管理口网络", True, "vrf-bmc"),
         ]
 
         plane_types = {}
-        for name, desc in plane_types_data:
-            pt = NetworkPlaneType(name=name, description=desc)
+        for name, desc, is_private, vrf in plane_types_data:
+            pt = NetworkPlaneType(name=name, description=desc, is_private=is_private, vrf=vrf)
             db.add(pt)
             db.flush()
             plane_types[name] = pt

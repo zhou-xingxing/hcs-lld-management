@@ -16,6 +16,16 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="is_private" label="是否私网" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.is_private ? 'success' : 'info'" size="small" effect="plain">
+              {{ row.is_private ? '私网' : '公网' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="vrf" label="所属 VRF" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.vrf || '-' }}</template>
+        </el-table-column>
         <el-table-column prop="region_count" label="使用区域数" width="120" align="center">
           <template #default="{ row }">
             <el-tag :type="row.region_count > 0 ? 'success' : 'info'" size="small" effect="plain">{{ row.region_count }}</el-tag>
@@ -58,6 +68,12 @@
         <el-form-item label="描述" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选描述信息" />
         </el-form-item>
+        <el-form-item label="是否私网" prop="is_private">
+          <el-switch v-model="form.is_private" active-text="私网" inactive-text="公网" />
+        </el-form-item>
+        <el-form-item label="所属 VRF" prop="vrf">
+          <el-input v-model="form.vrf" placeholder="可为空，例如: vrf-mgmt" maxlength="100" clearable />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -86,7 +102,7 @@ const isEdit = ref(false)
 const submitting = ref(false)
 const editId = ref(null)
 const formRef = ref(null)
-const form = ref({ name: '', description: '' })
+const form = ref({ name: '', description: '', is_private: false, vrf: '' })
 
 const rules = {
   name: [{ required: true, message: '请输入类型名称', trigger: 'blur' }],
@@ -106,14 +122,19 @@ async function fetchData() {
 function showCreateDialog() {
   isEdit.value = false
   editId.value = null
-  form.value = { name: '', description: '' }
+  form.value = { name: '', description: '', is_private: false, vrf: '' }
   dialogVisible.value = true
 }
 
 function showEditDialog(row) {
   isEdit.value = true
   editId.value = row.id
-  form.value = { name: row.name, description: row.description || '' }
+  form.value = {
+    name: row.name,
+    description: row.description || '',
+    is_private: Boolean(row.is_private),
+    vrf: row.vrf || '',
+  }
   dialogVisible.value = true
 }
 
