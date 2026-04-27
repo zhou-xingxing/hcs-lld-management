@@ -9,6 +9,7 @@ class ImportRow(BaseModel):
     row_number: int
     region_name: str
     plane_type_name: str
+    scope: str = "Global"
     ip_range: str
     vlan_id: Optional[int] = None
     gateway_position: Optional[str] = None

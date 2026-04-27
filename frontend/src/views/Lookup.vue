@@ -42,6 +42,7 @@
         <el-table-column prop="cidr" label="IP地址段" width="160" />
         <el-table-column prop="region_name" label="所属区域" width="160" />
         <el-table-column prop="plane_type_name" label="网络平面" width="120" />
+        <el-table-column prop="scope" label="作用域" width="110" />
         <el-table-column prop="vlan_id" label="VLAN ID" width="90" align="center" />
         <el-table-column prop="gateway_position" label="网关位置" min-width="180" show-overflow-tooltip />
         <el-table-column prop="gateway_ip" label="网关IP" width="140" />

@@ -39,6 +39,7 @@ class RegionPlaneResponse(BaseModel):
     region_id: str
     plane_type_id: str
     plane_type_name: str
+    scope: str = "Global"
     cidr: str | None = None
     vlan_id: int | None = None
     gateway_position: str | None = None
@@ -55,10 +56,20 @@ class RegionPlaneResponse(BaseModel):
 
 class RegionPlaneCreate(BaseModel):
     plane_type_id: str
+    scope: str | None = Field("Global", max_length=100, description="作用域，空值会归一化为 Global")
     cidr: str = Field(..., max_length=43, description="CIDR 地址段，如 10.0.0.0/22")
     vlan_id: int | None = Field(None, ge=1, le=4094)
     gateway_position: str | None = Field(None, max_length=255)
     gateway_ip: str | None = Field(None, max_length=39)
+
+    @field_validator("scope")
+    @classmethod
+    def normalize_scope(cls, value: str | None) -> str:
+        """归一化网络平面作用域，空值统一视为 Global。"""
+        if value is None:
+            return "Global"
+        value = value.strip()
+        return value or "Global"
 
     @field_validator("gateway_ip")
     @classmethod

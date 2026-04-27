@@ -52,19 +52,54 @@ def test_create_root_plane_with_cidr(client, admin_headers, user_headers_factory
     assert data["vlan_id"] == 100
     assert data["gateway_position"] == "CE01"
     assert data["gateway_ip"] == "10.0.0.1"
+    assert data["scope"] == "Global"
     assert data["parent_id"] is None
     assert data["plane_type_parent_id"] is None
     assert data["updated_at"]
 
 
 def test_create_root_plane_duplicate(client, admin_headers, user_headers_factory):
-    """同一 (region, plane_type) 不能重复启用。"""
+    """同一 (region, plane_type, scope) 不能重复启用。"""
     region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
     _enable_plane(client, region["id"], pt["id"], "10.0.0.0/22", user_headers)
     resp = _enable_plane(client, region["id"], pt["id"], "10.0.0.0/22", user_headers)
 
     assert resp.status_code == 409
-    assert "已在 Region 中启用" in resp.json()["detail"]
+    assert "Global 作用域中启用" in resp.json()["detail"]
+
+
+def test_create_root_plane_allows_same_type_different_scope(client, admin_headers, user_headers_factory):
+    """同一类型可在不同作用域内启用，CIDR 不重叠时允许创建。"""
+    region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    _enable_plane(client, region["id"], pt["id"], "10.0.0.0/24", user_headers, scope="业务AZ1")
+
+    resp = _enable_plane(client, region["id"], pt["id"], "10.0.1.0/24", user_headers, scope="业务AZ2")
+
+    assert resp.status_code == 201
+    assert resp.json()["scope"] == "业务AZ2"
+
+
+def test_create_root_plane_normalizes_blank_scope_to_global(client, admin_headers, user_headers_factory):
+    """空作用域统一归一化为 Global，并参与唯一性约束。"""
+    region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    resp = _enable_plane(client, region["id"], pt["id"], "10.0.0.0/24", user_headers, scope="  ")
+
+    assert resp.status_code == 201
+    assert resp.json()["scope"] == "Global"
+
+    duplicate_resp = _enable_plane(client, region["id"], pt["id"], "10.0.1.0/24", user_headers)
+    assert duplicate_resp.status_code == 409
+
+
+def test_create_root_plane_rejects_same_type_scope_cidr_overlap(client, admin_headers, user_headers_factory):
+    """同一类型的不同作用域实例之间 CIDR 不能重叠。"""
+    region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    _enable_plane(client, region["id"], pt["id"], "10.0.0.0/24", user_headers, scope="业务AZ1")
+
+    resp = _enable_plane(client, region["id"], pt["id"], "10.0.0.128/25", user_headers, scope="业务AZ2")
+
+    assert resp.status_code == 409
+    assert "同类型平面 CIDR 重叠" in resp.json()["detail"]
 
 
 def test_create_root_plane_invalid_cidr(client, admin_headers, user_headers_factory):
@@ -101,9 +136,7 @@ def test_create_root_plane_rejects_gateway_ip_outside_cidr(client, admin_headers
     assert "必须在平面 CIDR" in resp.json()["detail"]
 
 
-def test_create_private_plane_warns_when_gateway_ip_is_not_first_usable(
-    client, admin_headers, user_headers_factory
-):
+def test_create_private_plane_warns_when_gateway_ip_is_not_first_usable(client, admin_headers, user_headers_factory):
     """私网平面网关 IP 不是 CIDR 第一个可用 IP 时返回弱校验提示。"""
     region = client.post("/api/regions", json={"name": "TestRegion"}, headers=admin_headers).json()
     pt = _create_plane_type(client, admin_headers, "私网平面", is_private=True).json()
@@ -115,9 +148,7 @@ def test_create_private_plane_warns_when_gateway_ip_is_not_first_usable(
     assert "第一个可用 IP 10.0.0.1" in resp.json()["gateway_ip_warning"]
 
 
-def test_create_public_plane_warns_when_gateway_ip_is_not_last_usable(
-    client, admin_headers, user_headers_factory
-):
+def test_create_public_plane_warns_when_gateway_ip_is_not_last_usable(client, admin_headers, user_headers_factory):
     """非私网平面网关 IP 不是 CIDR 最后一个可用 IP 时返回弱校验提示。"""
     region, pt, user_headers = _setup(client, admin_headers, user_headers_factory)
 
@@ -138,6 +169,7 @@ def test_enable_child_plane(client, admin_headers, user_headers_factory):
     assert resp.status_code == 201
     data = resp.json()
     assert data["cidr"] == "10.0.0.0/24"
+    assert data["scope"] == "Global"
     assert data["parent_id"] == root["id"]
     assert data["plane_type_parent_id"] == root_pt["id"]
     assert data["updated_at"]
@@ -232,6 +264,7 @@ def test_get_plane_tree(client, admin_headers, user_headers_factory):
     tree = resp.json()
     assert len(tree) == 1
     assert tree[0]["cidr"] == "10.0.0.0/22"
+    assert tree[0]["scope"] == "Global"
     assert tree[0]["vlan_id"] == 200
     assert tree[0]["gateway_position"] == "Core-A"
     assert tree[0]["gateway_ip"] == "10.0.0.254"
@@ -239,6 +272,44 @@ def test_get_plane_tree(client, admin_headers, user_headers_factory):
     assert len(tree[0]["children"]) == 2
     child_a_node = next(node for node in tree[0]["children"] if node["plane_type_id"] == child_a["id"])
     assert child_a_node["children"][0]["cidr"] == "10.0.0.0/25"
+
+
+def test_get_plane_tree_prefers_same_scope_parent(client, admin_headers, user_headers_factory):
+    """同一作用域父平面存在时，子平面优先挂到同 scope 父级。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    _enable_plane(client, region["id"], root_pt["id"], "10.0.0.0/16", user_headers)
+    _enable_plane(client, region["id"], root_pt["id"], "10.1.0.0/16", user_headers, scope="业务AZ1")
+    _enable_plane(client, region["id"], child_pt["id"], "10.1.1.0/24", user_headers, scope="业务AZ1")
+
+    resp = client.get(f"/api/regions/{region['id']}/planes", headers=user_headers)
+
+    assert resp.status_code == 200
+    tree = resp.json()
+    global_root = next(node for node in tree if node["scope"] == "Global")
+    az1_root = next(node for node in tree if node["scope"] == "业务AZ1")
+    assert global_root["children"] == []
+    assert len(az1_root["children"]) == 1
+    assert az1_root["children"][0]["scope"] == "业务AZ1"
+    assert az1_root["children"][0]["parent_id"] == az1_root["id"]
+
+
+def test_get_plane_tree_falls_back_to_global_parent(client, admin_headers, user_headers_factory):
+    """同 scope 父平面不存在时，子平面回退挂到 Global 父级。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    global_root = _enable_plane(client, region["id"], root_pt["id"], "10.0.0.0/16", user_headers).json()
+    _enable_plane(client, region["id"], child_pt["id"], "10.0.1.0/24", user_headers, scope="业务AZ1")
+
+    resp = client.get(f"/api/regions/{region['id']}/planes", headers=user_headers)
+
+    assert resp.status_code == 200
+    tree = resp.json()
+    assert len(tree) == 1
+    assert tree[0]["id"] == global_root["id"]
+    assert len(tree[0]["children"]) == 1
+    assert tree[0]["children"][0]["scope"] == "业务AZ1"
+    assert tree[0]["children"][0]["parent_id"] == global_root["id"]
 
 
 def test_delete_parent_plane_cascades(client, admin_headers, user_headers_factory):
@@ -253,6 +324,46 @@ def test_delete_parent_plane_cascades(client, admin_headers, user_headers_factor
     assert resp.status_code == 204
     tree_resp = client.get(f"/api/regions/{region['id']}/planes", headers=user_headers)
     assert len(tree_resp.json()) == 0
+
+
+def test_delete_scoped_parent_only_cascades_same_scope(client, admin_headers, user_headers_factory):
+    """删除某个作用域的父平面时，不应级联删除其他作用域的子树。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    az1_root = _enable_plane(
+        client,
+        region["id"],
+        root_pt["id"],
+        "10.0.0.0/22",
+        user_headers,
+        scope="业务AZ1",
+    ).json()
+    _enable_plane(client, region["id"], root_pt["id"], "10.0.4.0/22", user_headers, scope="业务AZ2")
+    _enable_plane(client, region["id"], child_pt["id"], "10.0.0.0/24", user_headers, scope="业务AZ1")
+    _enable_plane(client, region["id"], child_pt["id"], "10.0.4.0/24", user_headers, scope="业务AZ2")
+
+    resp = client.delete(f"/api/regions/{region['id']}/planes/{az1_root['id']}", headers=user_headers)
+
+    assert resp.status_code == 204
+    tree_resp = client.get(f"/api/regions/{region['id']}/planes", headers=user_headers)
+    tree = tree_resp.json()
+    assert len(tree) == 1
+    assert tree[0]["scope"] == "业务AZ2"
+    assert tree[0]["children"][0]["scope"] == "业务AZ2"
+
+
+def test_delete_global_parent_cascades_fallback_children(client, admin_headers, user_headers_factory):
+    """删除 Global 父平面时，应级联删除实际回退挂载到它下面的子平面。"""
+    region, root_pt, user_headers = _setup(client, admin_headers, user_headers_factory)
+    child_pt = _create_plane_type(client, admin_headers, "管理子平面A", parent_id=root_pt["id"]).json()
+    global_root = _enable_plane(client, region["id"], root_pt["id"], "10.0.0.0/16", user_headers).json()
+    _enable_plane(client, region["id"], child_pt["id"], "10.0.1.0/24", user_headers, scope="业务AZ1")
+
+    resp = client.delete(f"/api/regions/{region['id']}/planes/{global_root['id']}", headers=user_headers)
+
+    assert resp.status_code == 204
+    tree_resp = client.get(f"/api/regions/{region['id']}/planes", headers=user_headers)
+    assert tree_resp.json() == []
 
 
 def test_delete_nonexistent_plane(client, admin_headers, user_headers_factory):

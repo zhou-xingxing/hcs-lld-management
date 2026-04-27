@@ -16,6 +16,7 @@ def test_generate_template():
     # Header row
     headers = [cell.value for cell in ws[1]]
     assert "区域名称" in headers
+    assert "作用域" in headers
     assert "IP地址段(CIDR)" in headers
 
     wb.close()
@@ -44,6 +45,7 @@ def test_parse_valid_excel():
     rows = parse_excel(buf.getvalue())
     assert len(rows) == 1
     assert rows[0]["region_name"] == "TestRegion"
+    assert rows[0]["scope"] == "Global"
     assert rows[0]["ip_range"] == "10.0.0.0/24"
     assert rows[0]["vlan_id"] == 100
     assert rows[0]["gateway_position"] == "SW01 / SW02"

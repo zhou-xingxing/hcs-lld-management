@@ -10,13 +10,14 @@ from openpyxl.utils import get_column_letter
 TEMPLATE_HEADERS = [
     "区域名称",
     "网络平面类型",
+    "作用域",
     "IP地址段(CIDR)",
     "VLAN ID",
     "网关位置",
     "网关IP",
 ]
 
-COLUMN_WIDTHS = [20, 16, 20, 12, 30, 18]
+COLUMN_WIDTHS = [20, 16, 16, 20, 12, 30, 18]
 
 
 def generate_template() -> io.BytesIO:
@@ -63,23 +64,34 @@ def parse_excel(file_bytes: bytes) -> list[dict[str, Any]]:
 
     Returns:
         解析后的行数据列表，每行包含 region_name、plane_type_name、
-        ip_range、vlan_id、gateway_position、gateway_ip 等字段。
+        scope、ip_range、vlan_id、gateway_position、gateway_ip 等字段。
     """
     wb = load_workbook(io.BytesIO(file_bytes), read_only=True)
     ws = wb.active
     rows = []
+    header_values = [str(cell.value or "").strip() for cell in ws[1]]
+    has_scope_column = len(header_values) >= 3 and header_values[2] == "作用域"
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
         if all(v is None or (isinstance(v, str) and v.strip() == "") for v in row):
             continue
+        scope = str(row[2] or "").strip() or "Global" if has_scope_column else "Global"
+        ip_range_index = 3 if has_scope_column else 2
+        vlan_id_index = 4 if has_scope_column else 3
+        gateway_position_index = 5 if has_scope_column else 4
+        gateway_ip_index = 6 if has_scope_column else 5
         rows.append(
             {
                 "row_number": row_idx,
                 "region_name": str(row[0] or "").strip(),
                 "plane_type_name": str(row[1] or "").strip(),
-                "ip_range": str(row[2] or "").strip(),
-                "vlan_id": _parse_int(row[3]),
-                "gateway_position": str(row[4] or "").strip() or None,
-                "gateway_ip": str(row[5] or "").strip() or None,
+                "scope": scope,
+                "ip_range": str(row[ip_range_index] or "").strip(),
+                "vlan_id": _parse_int(row[vlan_id_index] if len(row) > vlan_id_index else None),
+                "gateway_position": (
+                    str(row[gateway_position_index] or "").strip() if len(row) > gateway_position_index else ""
+                )
+                or None,
+                "gateway_ip": (str(row[gateway_ip_index] or "").strip() if len(row) > gateway_ip_index else "") or None,
             }
         )
     wb.close()
@@ -100,7 +112,7 @@ def build_export(data: list[dict[str, Any]]) -> io.BytesIO:
 
     Args:
         data: 导出数据列表，每行应包含 region_name、plane_type_name、
-              ip_range、vlan_id、gateway_position、gateway_ip。
+              scope、ip_range、vlan_id、gateway_position、gateway_ip。
 
     Returns:
         BytesIO 对象，包含格式化后的 .xlsx 导出文件。
@@ -119,7 +131,7 @@ def build_export(data: list[dict[str, Any]]) -> io.BytesIO:
         bottom=Side(style="thin"),
     )
 
-    headers = ["区域", "网络平面类型", "IP地址段(CIDR)", "VLAN ID", "网关位置", "网关IP"]
+    headers = ["区域", "网络平面类型", "作用域", "IP地址段(CIDR)", "VLAN ID", "网关位置", "网关IP"]
     for col_idx, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_idx, value=h)
         cell.font = header_font
@@ -132,6 +144,7 @@ def build_export(data: list[dict[str, Any]]) -> io.BytesIO:
         values = [
             item.get("region_name", ""),
             item.get("plane_type_name", ""),
+            item.get("scope", "Global"),
             item.get("ip_range", ""),
             item.get("vlan_id"),
             item.get("gateway_position", ""),

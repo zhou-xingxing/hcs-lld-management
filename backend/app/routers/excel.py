@@ -89,6 +89,7 @@ def export_excel(
             {
                 "region_name": plane.region.name if plane.region else "",
                 "plane_type_name": plane.plane_type.name if plane.plane_type else "",
+                "scope": plane.scope,
                 "ip_range": plane.cidr or "",
                 "vlan_id": plane.vlan_id,
                 "gateway_position": plane.gateway_position or "",

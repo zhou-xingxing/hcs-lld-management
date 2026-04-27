@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.services.region_plane import enable_plane_for_region
+from app.services.region_plane import enable_plane_for_region, normalize_plane_scope
 from app.utils.excel_utils import parse_excel
 from app.utils.ip_utils import parse_cidr, parse_ip
 from app.utils.time_utils import utcnow
@@ -117,6 +117,7 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
                     **row,
                     "_region_id": region_id,
                     "_plane_type_id": plane_type_id,
+                    "scope": normalize_plane_scope(row.get("scope")),
                 }
             )
 
@@ -132,6 +133,7 @@ def preview_import(file_bytes: bytes, db: Session) -> dict[str, Any]:
                 "row_number": r["row_number"],
                 "region_name": r["region_name"],
                 "plane_type_name": r["plane_type_name"],
+                "scope": normalize_plane_scope(r.get("scope")),
                 "ip_range": r["ip_range"],
                 "vlan_id": r["vlan_id"],
                 "gateway_position": r["gateway_position"],
@@ -176,6 +178,7 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
                 row["_plane_type_id"],
                 row["ip_range"],
                 operator,
+                scope=row.get("scope"),
                 vlan_id=row["vlan_id"],
                 gateway_position=row.get("gateway_position"),
                 gateway_ip=row.get("gateway_ip"),

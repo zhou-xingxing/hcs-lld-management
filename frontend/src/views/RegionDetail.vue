@@ -46,6 +46,15 @@
                 :value="pt.id"
               />
             </el-select>
+            <div class="scope-input-wrap">
+              <el-input v-model="newPlaneScope" placeholder="作用域 Global" size="small" style="width: 130px" clearable />
+              <el-tooltip
+                content="未填写时保存为 Global；同一 Region 内，同一网络平面类型只能有一个 Global 作用域实例。"
+                placement="top"
+              >
+                <el-icon class="scope-tip-icon"><InfoFilled /></el-icon>
+              </el-tooltip>
+            </div>
             <el-input v-model="newPlaneCidr" placeholder="CIDR, 如 10.0.0.0/22" size="small" style="width: 200px" clearable />
             <el-input-number v-model="newPlaneVlanId" placeholder="VLAN" size="small" :min="1" :max="4094" :step="1" :controls="false" style="width: 90px" />
             <el-input v-model="newPlaneGatewayPosition" placeholder="网关位置" size="small" style="width: 120px" clearable />
@@ -73,6 +82,7 @@
             <span class="plane-tree-node">
               <el-icon><Connection /></el-icon>
               <span class="plane-type-name">{{ data.plane_type_name }}</span>
+              <el-tag size="small" effect="plain">{{ data.scope || 'Global' }}</el-tag>
               <el-tag size="small" type="info" effect="plain" class="plane-cidr-tag">{{ data.cidr }}</el-tag>
               <el-tag v-if="data.vlan_id" size="small" type="warning" effect="plain">VLAN {{ data.vlan_id }}</el-tag>
               <el-tag v-if="data.gateway_position" size="small" type="success" effect="plain">{{ data.gateway_position }}</el-tag>
@@ -103,7 +113,7 @@ import { getRegion, enableRegionPlane, disableRegionPlane } from '@/api/regions'
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
 import { useAppStore } from '@/stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Edit, Delete, Connection } from '@element-plus/icons-vue'
+import { ArrowLeft, Edit, Delete, Connection, InfoFilled } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/time'
 
 const props = defineProps({ id: String })
@@ -115,6 +125,7 @@ const region = ref({ name: '', planes: [] })
 
 // ---- 平面相关状态 ----
 const newPlaneTypeId = ref('')
+const newPlaneScope = ref('Global')
 const newPlaneCidr = ref('')
 const newPlaneVlanId = ref(null)
 const newPlaneGatewayPosition = ref('')
@@ -133,10 +144,7 @@ async function fetchRegion() {
 
 async function fetchPlanes() {
   const res = await fetchPlaneTypes({ skip: 0, limit: 500 })
-  const enabledPlaneTypeIds = new Set(flattenPlanes(region.value.planes || []).map(p => p.plane_type_id))
-  availablePlaneTypes.value = (res.items || []).filter(
-    pt => !enabledPlaneTypeIds.has(pt.id)
-  )
+  availablePlaneTypes.value = res.items || []
 }
 
 // ---------- 平面操作 ----------
@@ -146,6 +154,7 @@ async function enablePlane() {
   try {
     const result = await enableRegionPlane(props.id, {
       plane_type_id: newPlaneTypeId.value,
+      scope: newPlaneScope.value || 'Global',
       cidr: newPlaneCidr.value,
       vlan_id: newPlaneVlanId.value || null,
       gateway_position: newPlaneGatewayPosition.value || null,
@@ -156,6 +165,7 @@ async function enablePlane() {
       ElMessage.warning(result.gateway_ip_warning)
     }
     newPlaneTypeId.value = ''
+    newPlaneScope.value = 'Global'
     newPlaneCidr.value = ''
     newPlaneVlanId.value = null
     newPlaneGatewayPosition.value = ''
@@ -213,17 +223,6 @@ async function disablePlane(planeId) {
     await fetchRegion()
     await fetchPlanes()
   } catch (e) { /* handled */ }
-}
-
-function flattenPlanes(nodes) {
-  const result = []
-  for (const node of nodes) {
-    result.push(node)
-    if (node.children) {
-      result.push(...flattenPlanes(node.children))
-    }
-  }
-  return result
 }
 
 // ---------- Region 操作 ----------
@@ -303,5 +302,15 @@ onMounted(async () => {
 .plane-type-name { font-weight: 500; min-width: 80px; }
 .plane-cidr-tag { font-family: 'SF Mono', monospace; }
 .plane-actions { margin-left: auto; display: flex; gap: 4px; }
+.scope-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.scope-tip-icon {
+  color: var(--color-text-tertiary);
+  cursor: help;
+  font-size: 15px;
+}
 .form-tip { display: block; color: var(--color-text-tertiary); font-size: 12px; margin-top: 4px; line-height: 1.4; }
 </style>

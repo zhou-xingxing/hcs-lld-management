@@ -10,6 +10,7 @@ class LookupResult(BaseModel):
     cidr: str
     region_name: str
     plane_type_name: str
+    scope: str = "Global"
     vlan_id: Optional[int] = None
     gateway_position: Optional[str] = None
     gateway_ip: Optional[str] = None

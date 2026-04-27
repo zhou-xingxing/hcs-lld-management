@@ -167,6 +167,7 @@ def enable_plane_endpoint(
             data.plane_type_id,
             data.cidr,
             operator_name(current_user),
+            scope=data.scope,
             vlan_id=data.vlan_id,
             gateway_position=data.gateway_position,
             gateway_ip=data.gateway_ip,
@@ -178,15 +179,30 @@ def enable_plane_endpoint(
     if pt.parent_id:
         parent_plane = (
             db.query(RegionNetworkPlane)
-            .filter(RegionNetworkPlane.region_id == region_id, RegionNetworkPlane.plane_type_id == pt.parent_id)
+            .filter(
+                RegionNetworkPlane.region_id == region_id,
+                RegionNetworkPlane.plane_type_id == pt.parent_id,
+                RegionNetworkPlane.scope == rp.scope,
+            )
             .first()
         )
+        if not parent_plane and rp.scope != "Global":
+            parent_plane = (
+                db.query(RegionNetworkPlane)
+                .filter(
+                    RegionNetworkPlane.region_id == region_id,
+                    RegionNetworkPlane.plane_type_id == pt.parent_id,
+                    RegionNetworkPlane.scope == "Global",
+                )
+                .first()
+            )
         parent_plane_id = parent_plane.id if parent_plane else None
     return {
         "id": rp.id,
         "region_id": rp.region_id,
         "plane_type_id": rp.plane_type_id,
         "plane_type_name": pt.name,
+        "scope": rp.scope,
         "cidr": rp.cidr,
         "vlan_id": rp.vlan_id,
         "gateway_position": rp.gateway_position,

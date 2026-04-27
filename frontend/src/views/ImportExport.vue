@@ -85,6 +85,7 @@
                 <el-table-column prop="row_number" label="行" width="50" />
                 <el-table-column prop="region_name" label="区域" width="120" />
                 <el-table-column prop="plane_type_name" label="网络平面" width="120" />
+                <el-table-column prop="scope" label="作用域" width="110" />
                 <el-table-column prop="ip_range" label="CIDR" width="140" />
                 <el-table-column prop="vlan_id" label="VLAN" width="80" />
                 <el-table-column prop="gateway_position" label="网关位置" min-width="140" show-overflow-tooltip />

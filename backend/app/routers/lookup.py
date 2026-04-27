@@ -29,6 +29,7 @@ def lookup_endpoint(
                 cidr=plane.cidr or "",
                 region_name=plane.region.name if plane.region else "",
                 plane_type_name=plane.plane_type.name if plane.plane_type else "",
+                scope=plane.scope,
                 vlan_id=plane.vlan_id,
                 gateway_position=plane.gateway_position,
                 gateway_ip=plane.gateway_ip,

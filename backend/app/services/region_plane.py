@@ -12,6 +12,8 @@ from app.services.change_log import log_change
 from app.utils.ip_utils import IPNetwork, find_overlapping, parse_cidr, parse_ip
 from app.utils.time_utils import format_datetime
 
+DEFAULT_PLANE_SCOPE = "Global"
+
 
 def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
     """获取 Region 下所有网络平面的树形结构。
@@ -31,13 +33,14 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
 
     # 构建内存字典，方便 O(1) 查找和拼装树
     plane_dict: dict[str, dict[str, Any]] = {}
-    plane_by_type_id = {p.plane_type_id: p for p in all_planes}
+    plane_by_type_scope = {(p.plane_type_id, p.scope): p for p in all_planes}
     for p in all_planes:
         plane_dict[p.id] = {
             "id": p.id,
             "region_id": p.region_id,
             "plane_type_id": p.plane_type_id,
             "plane_type_name": p.plane_type.name if p.plane_type else "",
+            "scope": p.scope,
             "cidr": p.cidr,
             "vlan_id": p.vlan_id,
             "gateway_position": p.gateway_position,
@@ -54,7 +57,11 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
     for plane in all_planes:
         node = plane_dict[plane.id]
         type_parent_id = plane.plane_type.parent_id if plane.plane_type else None
-        parent_plane = plane_by_type_id.get(type_parent_id) if type_parent_id else None
+        parent_plane = None
+        if type_parent_id:
+            parent_plane = plane_by_type_scope.get((type_parent_id, plane.scope))
+            if not parent_plane and plane.scope != DEFAULT_PLANE_SCOPE:
+                parent_plane = plane_by_type_scope.get((type_parent_id, DEFAULT_PLANE_SCOPE))
         if parent_plane and parent_plane.id in plane_dict:
             node["parent_id"] = parent_plane.id
             plane_dict[parent_plane.id]["children"].append(node)
@@ -70,6 +77,7 @@ def enable_plane_for_region(
     cidr: str,
     operator: str,
     *,
+    scope: str = DEFAULT_PLANE_SCOPE,
     vlan_id: int | None = None,
     gateway_position: str | None = None,
     gateway_ip: str | None = None,
@@ -82,6 +90,7 @@ def enable_plane_for_region(
         plane_type_id: 网络平面类型 ID。
         cidr: 根平面的 CIDR 范围。
         operator: 操作者名称。
+        scope: 作用域，空值调用方应归一化为 Global。
         vlan_id: VLAN ID，可选。
         gateway_position: 网关位置，可选。
         gateway_ip: 网关 IP 地址，可选。
@@ -95,23 +104,29 @@ def enable_plane_for_region(
     pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == plane_type_id).first()
     if not pt:
         raise BusinessError("网络平面类型不存在")
+    scope = normalize_plane_scope(scope)
 
     existing = (
         db.query(RegionNetworkPlane)
         .filter(
             RegionNetworkPlane.region_id == region_id,
             RegionNetworkPlane.plane_type_id == plane_type_id,
+            RegionNetworkPlane.scope == scope,
         )
         .first()
     )
     if existing:
-        raise BusinessError("该网络平面类型已在 Region 中启用，不能重复创建")
+        raise BusinessError(f"该网络平面类型已在 Region 的 {scope} 作用域中启用，不能重复创建")
 
     # 校验 CIDR 格式
     net = parse_cidr(cidr)
     if not net:
         raise BusinessError(f"无效的 CIDR 格式: {cidr}")
     gateway_ip_warning = _validate_gateway_ip_policy(net, gateway_ip, is_private=pt.is_private)
+    same_type_cidrs = _get_enabled_same_type_cidrs(db, region_id, plane_type_id)
+    overlapped = find_overlapping(cidr, same_type_cidrs)
+    if overlapped:
+        raise BusinessError(f"与同类型平面 CIDR 重叠: {', '.join(overlapped)}")
 
     parent_plane: RegionNetworkPlane | None = None
     if pt.parent_id:
@@ -120,9 +135,20 @@ def enable_plane_for_region(
             .filter(
                 RegionNetworkPlane.region_id == region_id,
                 RegionNetworkPlane.plane_type_id == pt.parent_id,
+                RegionNetworkPlane.scope == scope,
             )
             .first()
         )
+        if not parent_plane and scope != DEFAULT_PLANE_SCOPE:
+            parent_plane = (
+                db.query(RegionNetworkPlane)
+                .filter(
+                    RegionNetworkPlane.region_id == region_id,
+                    RegionNetworkPlane.plane_type_id == pt.parent_id,
+                    RegionNetworkPlane.scope == DEFAULT_PLANE_SCOPE,
+                )
+                .first()
+            )
         if not parent_plane:
             raise BusinessError("父级网络平面尚未在该 Region 启用")
         if not parent_plane.cidr:
@@ -142,6 +168,7 @@ def enable_plane_for_region(
     rp = RegionNetworkPlane(
         region_id=region_id,
         plane_type_id=plane_type_id,
+        scope=scope,
         cidr=cidr,
         vlan_id=vlan_id,
         gateway_position=gateway_position or None,
@@ -158,7 +185,8 @@ def enable_plane_for_region(
         operator=operator,
         new_value=(
             f"region={region_id}, plane_type={pt.name}, cidr={cidr}, "
-            f"vlan_id={vlan_id or ''}, gateway_position={gateway_position or ''}, gateway_ip={gateway_ip or ''}"
+            f"scope={scope}, vlan_id={vlan_id or ''}, "
+            f"gateway_position={gateway_position or ''}, gateway_ip={gateway_ip or ''}"
         ),
     )
     return rp, gateway_ip_warning
@@ -217,7 +245,7 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
         entity_id=plane_id,
         action="delete",
         operator=operator,
-        old_value=f"region={region_id}, plane_type={pt_name}, cidr={plane.cidr}",
+        old_value=f"region={region_id}, plane_type={pt_name}, scope={plane.scope}, cidr={plane.cidr}",
     )
 
     for child_id in reversed(descendant_ids):
@@ -232,7 +260,7 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
 def _collect_descendant_ids(db: Session, plane: RegionNetworkPlane) -> list[str]:
     """递归收集所有后代平面 ID（深度优先）。"""
     result: list[str] = []
-    children = (
+    child_candidates = (
         db.query(RegionNetworkPlane)
         .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
         .filter(
@@ -241,10 +269,29 @@ def _collect_descendant_ids(db: Session, plane: RegionNetworkPlane) -> list[str]
         )
         .all()
     )
-    for child in children:
+    for child in child_candidates:
+        if not _is_effective_parent(db, parent=plane, child=child):
+            continue
         result.append(child.id)
         result.extend(_collect_descendant_ids(db, child))
     return result
+
+
+def _is_effective_parent(db: Session, *, parent: RegionNetworkPlane, child: RegionNetworkPlane) -> bool:
+    if child.scope == parent.scope:
+        return True
+    if parent.scope != DEFAULT_PLANE_SCOPE:
+        return False
+    same_scope_parent = (
+        db.query(RegionNetworkPlane.id)
+        .filter(
+            RegionNetworkPlane.region_id == child.region_id,
+            RegionNetworkPlane.plane_type_id == parent.plane_type_id,
+            RegionNetworkPlane.scope == child.scope,
+        )
+        .first()
+    )
+    return same_scope_parent is None
 
 
 def _get_enabled_child_plane_cidrs(db: Session, region_id: str, parent_type_id: str) -> list[str]:
@@ -258,6 +305,26 @@ def _get_enabled_child_plane_cidrs(db: Session, region_id: str, parent_type_id: 
         .all()
     )
     return [row[0] for row in rows if row[0]]
+
+
+def _get_enabled_same_type_cidrs(db: Session, region_id: str, plane_type_id: str) -> list[str]:
+    rows = (
+        db.query(RegionNetworkPlane.cidr)
+        .filter(
+            RegionNetworkPlane.region_id == region_id,
+            RegionNetworkPlane.plane_type_id == plane_type_id,
+        )
+        .all()
+    )
+    return [row[0] for row in rows if row[0]]
+
+
+def normalize_plane_scope(scope: str | None) -> str:
+    """归一化 Region 网络平面作用域，空值统一为 Global。"""
+    if scope is None:
+        return DEFAULT_PLANE_SCOPE
+    scope = scope.strip()
+    return scope or DEFAULT_PLANE_SCOPE
 
 
 def _validate_gateway_ip_policy(net: IPNetwork, gateway_ip: str | None, *, is_private: bool) -> str | None:

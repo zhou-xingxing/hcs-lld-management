@@ -21,11 +21,12 @@ def gen_uuid() -> str:
 
 class RegionNetworkPlane(Base):
     __tablename__ = "region_network_planes"
-    __table_args__ = (UniqueConstraint("region_id", "plane_type_id", name="uq_region_plane_type"),)
+    __table_args__ = (UniqueConstraint("region_id", "plane_type_id", "scope", name="uq_region_plane_type_scope"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
     region_id: Mapped[str] = mapped_column(String(36), ForeignKey("regions.id", ondelete="CASCADE"))
     plane_type_id: Mapped[str] = mapped_column(String(36), ForeignKey("network_plane_types.id", ondelete="CASCADE"))
+    scope: Mapped[str] = mapped_column(String(100), nullable=False, default="Global")
     # CIDR 网络地址段，如 "10.0.0.0/22"；nullable 兼容旧数据
     cidr: Mapped[str | None] = mapped_column(String(43), nullable=True)
     vlan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

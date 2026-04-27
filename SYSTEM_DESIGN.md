@@ -144,6 +144,7 @@ erDiagram
         string id PK
         string region_id FK
         string plane_type_id FK
+        string scope
         string cidr
         int    vlan_id
         string gateway_position
@@ -259,7 +260,8 @@ erDiagram
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
 | region_id | String(36) | FK -> regions.id, CASCADE | 所属 Region |
-| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE, UNIQUE(region_id, plane_type_id) | 启用的平面类型 |
+| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE | 启用的平面类型 |
+| scope | String(100) | NOT NULL, default="Global", UNIQUE(region_id, plane_type_id, scope) | 平面实例作用域；Global 表示 Region 全局 |
 | cidr | String(43) | NULLABLE | CIDR 地址段，如 "10.0.0.0/22" |
 | vlan_id | Integer | NULLABLE, 1-4094 | VLAN ID |
 | gateway_position | String(255) | NULLABLE | 网关位置，如一对交换机设备名称或端口位置 |
@@ -267,7 +269,7 @@ erDiagram
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-Region 维度的网络平面启用和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。
+Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；同一 Region 内同一平面类型可按 `scope` 启用多个实例，空作用域在接口层归一化为 `Global`。子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。
 
 `vlan_id`、`gateway_position`、`gateway_ip` 描述该 Region 中启用平面本身的网关信息。填写 `gateway_ip` 时必须位于该平面的 CIDR 范围内；私网平面推荐使用 CIDR 内第一个可用 IP，非私网平面推荐使用最后一个可用 IP，不符合推荐值时前端提示但不阻止保存。
 
@@ -457,17 +459,18 @@ GET /api/backup/records
 
 ### 7.3 全局网络平面类型树
 
-**决策**：网络平面的父子层级只维护在 `network_plane_types.parent_id`，所有 Region 共享同一棵类型树。`region_network_planes` 只表示某个 Region 启用了哪个类型，以及该 Region 下该类型对应的 CIDR。
+**决策**：网络平面的父子层级只维护在 `network_plane_types.parent_id`，所有 Region 共享同一棵类型树。`region_network_planes` 表示某个 Region 在某个作用域启用了哪个类型，以及该 Region 下该类型实例对应的 CIDR。
 
 **理由**：网络平面类型之间的嵌套关系是长期全局规则，不随 Region 改变。把层级放在类型表中，可避免不同 Region 维护出不一致的父子结构；Region 详情页只负责启用全局类型树中的节点。
 
 **核心约束**：
 
 1. 启用子类型平面时，父级类型必须已在同一 Region 启用。
-2. 子类型平面的 CIDR 必须落在父级平面的 CIDR 范围内。
-3. 同一父级下已启用的兄弟类型平面 CIDR 不能互相重叠。
-4. 删除某个 Region 下的父平面时，递归删除该 Region 下已启用的所有子类型平面。
-5. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id)` 防止同一 Region 重复启用同一个网络平面类型。
+2. 子类型平面优先挂载到同 `scope` 的父平面；如果同 `scope` 父平面不存在，允许回退挂载到 `Global` 父平面；其他作用域的父平面不可作为有效父级。
+3. 子类型平面的 CIDR 必须落在实际挂载父平面的 CIDR 范围内。
+4. 同一父级下已启用的兄弟类型平面 CIDR 不能互相重叠；同一 Region 内同一平面类型的不同 `scope` 实例之间 CIDR 也不能重叠。
+5. 删除某个 Region 下的父平面时，只递归删除实际挂载到该父实例下的子树，避免误删其他 `scope` 的平面实例。
+6. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id, scope)` 防止同一 Region 的同一作用域重复启用同一个网络平面类型。
 
 **前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；
 ### 7.4 服务层变更日志
