@@ -153,6 +153,7 @@ def enable_plane_endpoint(
 ) -> dict[str, Any]:
     """为 Region 启用根级网络平面。"""
     from app.models.network_plane_type import NetworkPlaneType
+    from app.models.region_network_plane import RegionNetworkPlane
     from app.services.region import get_region
 
     region = get_region(db, region_id)
@@ -167,13 +168,22 @@ def enable_plane_endpoint(
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
     db.commit()
+    parent_plane_id = None
+    if pt.parent_id:
+        parent_plane = (
+            db.query(RegionNetworkPlane)
+            .filter(RegionNetworkPlane.region_id == region_id, RegionNetworkPlane.plane_type_id == pt.parent_id)
+            .first()
+        )
+        parent_plane_id = parent_plane.id if parent_plane else None
     return {
         "id": rp.id,
         "region_id": rp.region_id,
         "plane_type_id": rp.plane_type_id,
         "plane_type_name": pt.name,
         "cidr": rp.cidr,
-        "parent_id": rp.parent_id,
+        "parent_id": parent_plane_id,
+        "plane_type_parent_id": pt.parent_id,
         "created_at": format_datetime(rp.created_at),
         "updated_at": format_datetime(rp.updated_at),
         "children": [],
@@ -188,7 +198,7 @@ def create_child_plane_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """在指定父平面下创建子网络平面（最多 3 级嵌套）。"""
+    """兼容旧接口：子平面关系现在由全局网络平面类型树维护。"""
     from app.services.region import get_region
 
     region = get_region(db, region_id)
@@ -196,20 +206,10 @@ def create_child_plane_endpoint(
         raise HTTPException(status_code=404, detail="Region not found")
     ensure_region_business_write_allowed(current_user, region_id)
     try:
-        child = create_child_plane(db, region_id, plane_id, data.cidr, operator_name(current_user))
+        create_child_plane(db, region_id, plane_id, data.cidr, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    db.commit()
-    return {
-        "id": child.id,
-        "region_id": child.region_id,
-        "plane_type_id": child.plane_type_id,
-        "cidr": child.cidr,
-        "parent_id": child.parent_id,
-        "created_at": format_datetime(child.created_at),
-        "updated_at": format_datetime(child.updated_at),
-        "children": [],
-    }
+    raise HTTPException(status_code=410, detail="子平面关系由网络平面类型维护")
 
 
 @router.delete("/{region_id}/planes/{plane_id}", status_code=204)

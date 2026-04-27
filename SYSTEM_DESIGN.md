@@ -100,8 +100,8 @@ erDiagram
     User ||--o{ UserRegion : "1:N"
     Region ||--o{ UserRegion : "1:N"
     Region ||--o{ RegionNetworkPlane : "1:N"
+    NetworkPlaneType ||--o{ NetworkPlaneType : "self parent-child"
     NetworkPlaneType ||--o{ RegionNetworkPlane : "1:N"
-    RegionNetworkPlane ||--o{ RegionNetworkPlane : "self parent-child"
     Region ||--o{ IPAllocation : "1:N"
     NetworkPlaneType ||--o{ IPAllocation : "1:N"
     RegionNetworkPlane ||--o{ IPAllocation : "1:N"
@@ -138,6 +138,7 @@ erDiagram
         text   description
         bool   is_private
         string vrf
+        string parent_id FK
         datetime created_at
         datetime updated_at
     }
@@ -147,7 +148,6 @@ erDiagram
         string region_id FK
         string plane_type_id FK
         string cidr
-        string parent_id FK
         datetime created_at
         datetime updated_at
     }
@@ -262,10 +262,11 @@ erDiagram
 | description | Text | NULLABLE | 描述 |
 | is_private | Boolean | NOT NULL, default=false | 是否私网 |
 | vrf | String(100) | NULLABLE | 所属 VRF |
+| parent_id | String(36) | FK -> self.id, SET NULL, NULLABLE | 父级网络平面类型；NULL 表示根类型 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-全局目录表，所有 Region 共享。
+全局目录表，所有 Region 共享。网络平面父子层级在此表维护，所有 Region 使用同一棵类型树，最多 3 级嵌套。
 
 #### region_network_planes
 
@@ -273,13 +274,12 @@ erDiagram
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
 | region_id | String(36) | FK -> regions.id, CASCADE | 所属 Region |
-| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE | 启用的平面类型 |
+| plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE, UNIQUE(region_id, plane_type_id) | 启用的平面类型 |
 | cidr | String(43) | NULLABLE | CIDR 地址段，如 "10.0.0.0/22" |
-| parent_id | String(36) | FK -> self.id, CASCADE, NULLABLE | 父平面节点 ID，NULL 表示根节点 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-多对多关联表，同时作为树状结构节点，支持最多 3 级嵌套。`parent_id` 自引用实现层级关系，`cidr` 定义该平面节点的地址段范围。子平面的 CIDR 必须是父平面的子网段。
+Region 维度的网络平面启用和 CIDR 配置表。树形结构由 `network_plane_types.parent_id` 派生；子平面的 CIDR 必须是同 Region 下父级平面 CIDR 的子网段。
 
 #### ip_allocations
 
@@ -369,12 +369,11 @@ erDiagram
 | POST | `/api/users/{id}/reset-password` | 重置用户密码（administrator） |
 | GET/POST | `/api/regions` | 列表/创建 Region |
 | GET/PUT/DELETE | `/api/regions/{id}` | Region 详情/更新/删除 |
-| GET/POST | `/api/regions/{id}/planes` | 启用的网络平面管理（返回树形结构） |
-| POST | `/api/regions/{id}/planes/{pid}/children` | 创建子网络平面 |
+| GET/POST | `/api/regions/{id}/planes` | 启用网络平面类型，返回按全局类型树派生的 Region 平面树 |
 | GET/POST | `/api/regions/{region_id}/allocations` | IP 分配列表/创建 |
 | GET/PUT/DELETE | `/api/allocations/{id}` | IP 分配详情/更新/删除 |
-| GET/POST | `/api/network-plane-types` | 列表/创建网络平面类型 |
-| GET/PUT/DELETE | `/api/network-plane-types/{id}` | 类型详情/更新/删除 |
+| GET/POST | `/api/network-plane-types` | 列表/创建网络平面类型，支持维护父级类型 |
+| GET/PUT/DELETE | `/api/network-plane-types/{id}` | 类型详情/更新/删除，支持维护父级类型 |
 | GET | `/api/lookup?q={ip_or_cidr}&exact=true` | IP/CIDR 查重 |
 | GET | `/api/excel/template` | 下载导入模板 |
 | POST | `/api/excel/import/preview` | 上传 Excel 预览 |
@@ -487,31 +486,46 @@ GET /api/backup/records
 
 **理由**：SQLite 无原生 CIDR 数据类型。`ipaddress.IPv4Network.overlaps()` 提供了正确的语义。MVP 数据量下内存扫描性能绰绰有余。
 
-### 7.3 服务层变更日志
+### 7.3 全局网络平面类型树
+
+**决策**：网络平面的父子层级只维护在 `network_plane_types.parent_id`，所有 Region 共享同一棵类型树。`region_network_planes` 只表示某个 Region 启用了哪个类型，以及该 Region 下该类型对应的 CIDR。
+
+**理由**：网络平面类型之间的嵌套关系是长期全局规则，不随 Region 改变。把层级放在类型表中，可避免不同 Region 维护出不一致的父子结构；Region 详情页只负责启用全局类型树中的节点。
+
+**核心约束**：
+
+1. 启用子类型平面时，父级类型必须已在同一 Region 启用。
+2. 子类型平面的 CIDR 必须落在父级平面的 CIDR 范围内。
+3. 同一父级下已启用的兄弟类型平面 CIDR 不能互相重叠。
+4. 删除某个 Region 下的父平面时，递归删除该 Region 下已启用的所有子类型平面及其 IP 分配。
+5. `region_network_planes` 使用 `UNIQUE(region_id, plane_type_id)` 防止同一 Region 重复启用同一个网络平面类型。
+
+**前端交互**：网络平面类型页面提供“父级平面”选择，用于维护全局类型树；
+### 7.4 服务层变更日志
 
 **决策**：Service 层显式调用 `log_change()`，而非 SQLAlchemy 事件监听器。
 
 **理由**：事件监听器需要额外的 `session.info` 传递操作者上下文，且隐含行为难以调试。Service 层方式是显式的、可单元测试的。
 
-### 7.4 UUID 主键
+### 7.5 UUID 主键
 
 **决策**：所有表使用 UUID v4 主键，存储为 `String(36)`。
 
 **理由**：UUID 防止 ID 枚举攻击，便于未来数据迁移/合并（分布式无冲突）。字符串格式在 API 响应和日志中可读性好。
 
-### 7.5 两阶段 Excel 导入
+### 7.6 两阶段 Excel 导入
 
 **决策**：预览（解析验证）→ 确认（批量写入）两阶段。
 
 **理由**：预览步骤让用户在提交前检查解析结果和验证错误。确认时只需传入 preview_id，避免大数据量重新传输。预览缓存 30 分钟防止内存无限增长。
 
-### 7.6 前端本地状态管理
+### 7.7 前端本地状态管理
 
 **决策**：每个页面独立 fetch 数据，Pinia 仅存储会话状态（token、当前用户、权限/Region 授权）和少量 UI 状态（侧边栏状态）。
 
 **理由**：共享实体状态引入一致性挑战（跨页面数据同步），没有 WebSocket 难以保持同步。独立 fetch 更简单、正确。
 
-### 7.7 数据库备份机制
+### 7.8 数据库备份机制
 
 **决策**：使用 `backup_configs` 保存全局备份配置，使用 `backup_records` 记录每次执行结果。FastAPI lifespan 启动轻量后台线程 `BackupScheduler`，按固定间隔检查 `next_run_at` 是否到期。
 
@@ -532,7 +546,7 @@ GET /api/backup/records
 
 **限制**：当前实现只支持 SQLite 数据库备份；若未来切换 PostgreSQL/MySQL，需要替换备份生成策略（如 pg_dump/mysqldump 或数据库原生快照）。
 
-### 7.8 时间与时区策略
+### 7.9 时间与时区策略
 
 **决策**：业务时间统一按 UTC 存储和传输，用户配置的定时备份时分按系统业务时区解释。默认业务时区为 `Asia/Shanghai`，通过 `APP_TIMEZONE` 配置。
 
@@ -546,7 +560,7 @@ GET /api/backup/records
 
 **理由**：UTC 存储避免服务器本地时区变化导致排序、过滤和调度判断漂移；业务时区解释定时任务，符合用户对“每天 02:30 / 每周一 02:30”的直觉。
 
-### 7.9 认证鉴权机制
+### 7.10 认证鉴权机制
 
 **决策**：采用本地账号 + Bearer token + 两级角色模型。密码使用 PBKDF2-HMAC-SHA256 加盐哈希存储；token 使用 HS256 签名并携带用户 ID、用户名、角色、签发时间和过期时间。
 
@@ -566,8 +580,8 @@ GET /api/backup/records
 | `/login` | Login.vue | 登录页 |
 | `/dashboard` | Dashboard.vue | 统计概览仪表盘 |
 | `/regions` | Regions.vue | 区域列表 CRUD |
-| `/regions/:id` | RegionDetail.vue | 区域详情 + 网络平面管理 + IP 分配 CRUD |
-| `/plane-types` | PlaneTypes.vue | 网络平面类型 CRUD |
+| `/regions/:id` | RegionDetail.vue | 区域详情 + 启用全局网络平面类型 + IP 分配 CRUD |
+| `/plane-types` | PlaneTypes.vue | 网络平面类型 CRUD，维护全局父子层级 |
 | `/lookup` | Lookup.vue | IP/CIDR 查重搜索 |
 | `/import-export` | ImportExport.vue | Excel 导入/导出（Tab 页切换） |
 | `/change-logs` | ChangeLogs.vue | 变更历史筛选查询 |

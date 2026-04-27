@@ -67,7 +67,6 @@
               <el-tag size="small" type="info" effect="plain" class="plane-cidr-tag">{{ data.cidr }}</el-tag>
               <span class="plane-alloc-count">{{ data.allocation_count }} 分配</span>
               <span v-if="canManageBusiness" class="plane-actions">
-                <el-button size="small" text type="primary" @click.stop="showCreateChild(data)">添加子网</el-button>
                 <el-popconfirm
                   title="确定删除此平面？其所有子平面和 IP 分配也将被一并删除"
                   @confirm="disablePlane(data.id)"
@@ -138,26 +137,6 @@
       />
     </el-card>
 
-    <!-- 创建子网络平面对话框 -->
-    <el-dialog v-model="childDialogVisible" title="添加子网络平面" width="480px" :close-on-click-modal="false">
-      <el-form :model="childForm" :rules="childRules" label-width="100px">
-        <el-form-item label="父平面">
-          <el-tag type="primary" effect="plain">{{ childForm.parentName }}</el-tag>
-          <span style="margin-left: 8px; color: var(--color-text-tertiary); font-size: 12px">
-            CIDR: {{ childForm.parentCidr }}
-          </span>
-        </el-form-item>
-        <el-form-item label="子网CIDR" prop="cidr">
-          <el-input v-model="childForm.cidr" placeholder="如 10.0.0.0/24" />
-          <span class="form-tip">子网 CIDR 必须在 {{ childForm.parentCidr }} 范围内</span>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="childDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleCreateChild" :loading="childSubmitting">确定</el-button>
-      </template>
-    </el-dialog>
-
     <!-- Allocation Dialog -->
     <el-dialog v-model="allocDialogVisible" :title="isEditAlloc ? '编辑IP分配' : '添加IP分配'" width="550px" :close-on-click-modal="false">
       <el-form ref="allocFormRef" :model="allocForm" :rules="allocRules" label-width="120px">
@@ -212,7 +191,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  getRegion, fetchRegionPlanes, enableRegionPlane, createChildPlane, disableRegionPlane,
+  getRegion, enableRegionPlane, disableRegionPlane,
   fetchRegionAllocations, createAllocation, updateAllocation, deleteAllocation
 } from '@/api/regions'
 import { fetchPlaneTypes } from '@/api/networkPlaneTypes'
@@ -238,19 +217,6 @@ const newPlaneTypeId = ref('')
 const newPlaneCidr = ref('')
 const availablePlaneTypes = ref([])
 const filterPlaneId = ref('')
-
-// ---- 子平面对话框 ----
-const childDialogVisible = ref(false)
-const childSubmitting = ref(false)
-const childForm = ref({
-  parentId: '',
-  parentName: '',
-  parentCidr: '',
-  cidr: '',
-})
-const childRules = {
-  cidr: [{ required: true, message: '请输入子网 CIDR', trigger: 'blur' }],
-}
 
 // ---- IP 分配对话框 ----
 const allocDialogVisible = ref(false)
@@ -289,8 +255,9 @@ async function fetchRegion() {
 
 async function fetchPlanes() {
   const res = await fetchPlaneTypes({ skip: 0, limit: 500 })
+  const enabledPlaneTypeIds = new Set(flattenPlanes(region.value.planes || []).map(p => p.plane_type_id))
   availablePlaneTypes.value = (res.items || []).filter(
-    pt => !(region.value.planes || []).some(p => p.plane_type_id === pt.id)
+    pt => !enabledPlaneTypeIds.has(pt.id)
   )
 }
 
@@ -326,29 +293,6 @@ async function enablePlane() {
   } catch (e) { /* handled by interceptor */ }
 }
 
-function showCreateChild(data) {
-  childForm.value = {
-    parentId: data.id,
-    parentName: data.plane_type_name,
-    parentCidr: data.cidr,
-    cidr: '',
-  }
-  childDialogVisible.value = true
-}
-
-async function handleCreateChild() {
-  childSubmitting.value = true
-  try {
-    await createChildPlane(props.id, childForm.value.parentId, childForm.value.cidr)
-    ElMessage.success('子网络平面已创建')
-    childDialogVisible.value = false
-    await fetchRegion()
-    await fetchPlanes()
-  } finally {
-    childSubmitting.value = false
-  }
-}
-
 async function disablePlane(planeId) {
   try {
     await disableRegionPlane(props.id, planeId)
@@ -366,6 +310,17 @@ function showCreateAllocation() {
   editAllocId.value = null
   allocForm.value = { plane_id: '', ip_range: '', vlan_id: null, gateway: '', subnet_mask: '', purpose: '', status: 'active' }
   allocDialogVisible.value = true
+}
+
+function flattenPlanes(nodes) {
+  const result = []
+  for (const node of nodes) {
+    result.push(node)
+    if (node.children) {
+      result.push(...flattenPlanes(node.children))
+    }
+  }
+  return result
 }
 
 function showEditAllocation(row) {

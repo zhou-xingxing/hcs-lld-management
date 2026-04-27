@@ -96,7 +96,7 @@ def _get_allocated_cidrs_in_plane(db: Session, plane_id: str) -> list[str]:
 
 
 def _get_child_plane_cidrs(db: Session, plane_id: str) -> list[str]:
-    """查询指定平面的直接子平面 CIDR 列表。
+    """查询指定平面的直接子类型平面 CIDR 列表。
 
     Args:
         db: 数据库会话。
@@ -105,7 +105,18 @@ def _get_child_plane_cidrs(db: Session, plane_id: str) -> list[str]:
     Returns:
         子平面的 CIDR 字符串列表。
     """
-    children = db.query(RegionNetworkPlane.cidr).filter(RegionNetworkPlane.parent_id == plane_id).all()
+    plane = db.get(RegionNetworkPlane, plane_id)
+    if not plane:
+        return []
+    children = (
+        db.query(RegionNetworkPlane.cidr)
+        .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
+        .filter(
+            RegionNetworkPlane.region_id == plane.region_id,
+            NetworkPlaneType.parent_id == plane.plane_type_id,
+        )
+        .all()
+    )
     return [c[0] for c in children if c[0]]
 
 

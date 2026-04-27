@@ -17,8 +17,8 @@ from app.utils.time_utils import format_datetime
 def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
     """获取 Region 下所有网络平面的树形结构。
 
-    返回嵌套的树形列表，根节点为 parent_id IS NULL 的平面，
-    每个节点包含 children 列表。
+    返回嵌套的树形列表，树结构来自全局 NetworkPlaneType.parent_id，
+    RegionNetworkPlane 只提供当前 Region 的启用状态和 CIDR。
 
     Args:
         db: 数据库会话。
@@ -32,6 +32,7 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
 
     # 构建内存字典，方便 O(1) 查找和拼装树
     plane_dict: dict[str, dict[str, Any]] = {}
+    plane_by_type_id = {p.plane_type_id: p for p in all_planes}
     for p in all_planes:
         alloc_count = db.query(func.count(IPAllocation.id)).filter(IPAllocation.plane_id == p.id).scalar() or 0
         plane_dict[p.id] = {
@@ -40,19 +41,23 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
             "plane_type_id": p.plane_type_id,
             "plane_type_name": p.plane_type.name if p.plane_type else "",
             "cidr": p.cidr,
-            "parent_id": p.parent_id,
+            "parent_id": None,
+            "plane_type_parent_id": p.plane_type.parent_id if p.plane_type else None,
             "allocation_count": alloc_count,
             "created_at": format_datetime(p.created_at),
             "updated_at": format_datetime(p.updated_at),
             "children": [],
         }
 
-    # 拼装树：将子节点挂到父节点的 children 列表中
+    # 拼装树：将子节点挂到同 Region 中已启用的父类型节点下
     roots = []
-    for pid, node in plane_dict.items():
-        parent_pid = node["parent_id"]
-        if parent_pid and parent_pid in plane_dict:
-            plane_dict[parent_pid]["children"].append(node)
+    for plane in all_planes:
+        node = plane_dict[plane.id]
+        type_parent_id = plane.plane_type.parent_id if plane.plane_type else None
+        parent_plane = plane_by_type_id.get(type_parent_id) if type_parent_id else None
+        if parent_plane and parent_plane.id in plane_dict:
+            node["parent_id"] = parent_plane.id
+            plane_dict[parent_plane.id]["children"].append(node)
         else:
             roots.append(node)
     return roots
@@ -61,7 +66,7 @@ def get_region_plane_tree(db: Session, region_id: str) -> list[dict[str, Any]]:
 def enable_plane_for_region(
     db: Session, region_id: str, plane_type_id: str, cidr: str, operator: str
 ) -> RegionNetworkPlane:
-    """为 Region 启用一个根网络平面（parent_id IS NULL）。
+    """为 Region 启用一个网络平面类型。
 
     Args:
         db: 数据库会话。
@@ -74,25 +79,60 @@ def enable_plane_for_region(
         新创建的 RegionNetworkPlane 对象。
 
     Raises:
-        BusinessError: 该类型已存在根节点、CIDR 格式无效。
+        BusinessError: 该类型已启用、CIDR 格式无效、父级未启用或 CIDR 越界。
     """
-    # 校验：同一 (region_id, plane_type_id) 不能有多个根平面
-    existing_root = (
+    pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == plane_type_id).first()
+    if not pt:
+        raise BusinessError("网络平面类型不存在")
+
+    existing = (
         db.query(RegionNetworkPlane)
         .filter(
             RegionNetworkPlane.region_id == region_id,
             RegionNetworkPlane.plane_type_id == plane_type_id,
-            RegionNetworkPlane.parent_id.is_(None),
         )
         .first()
     )
-    if existing_root:
-        raise BusinessError("该网络平面类型已存在根节点，不能重复创建")
+    if existing:
+        raise BusinessError("该网络平面类型已在 Region 中启用，不能重复创建")
 
     # 校验 CIDR 格式
     net = parse_cidr(cidr)
     if not net:
         raise BusinessError(f"无效的 CIDR 格式: {cidr}")
+
+    parent_plane: RegionNetworkPlane | None = None
+    if pt.parent_id:
+        parent_plane = (
+            db.query(RegionNetworkPlane)
+            .filter(
+                RegionNetworkPlane.region_id == region_id,
+                RegionNetworkPlane.plane_type_id == pt.parent_id,
+            )
+            .first()
+        )
+        if not parent_plane:
+            raise BusinessError("父级网络平面尚未在该 Region 启用")
+        if not parent_plane.cidr:
+            raise BusinessError("父级网络平面没有 CIDR 范围，无法启用子平面")
+        parent_net = parse_cidr(parent_plane.cidr)
+        if not parent_net:
+            raise BusinessError("父级网络平面 CIDR 格式无效")
+        subnet_check = net.subnet_of(parent_net) if hasattr(net, "subnet_of") else parent_net.supernet_of(net)
+        if not subnet_check:
+            raise BusinessError(f"子平面 CIDR {cidr} 必须在父平面 CIDR {parent_plane.cidr} 范围内")
+
+        sibling_cidrs = _get_enabled_child_plane_cidrs(db, region_id, pt.parent_id)
+        overlapped = find_overlapping(cidr, sibling_cidrs)
+        if overlapped:
+            raise BusinessError(f"与兄弟平面 CIDR 重叠: {', '.join(overlapped)}")
+
+        parent_alloc_cidrs = [
+            a.ip_range for a in db.query(IPAllocation).filter(IPAllocation.plane_id == parent_plane.id).all()
+        ]
+        overlapped = find_overlapping(cidr, parent_alloc_cidrs)
+        if overlapped:
+            raise BusinessError(f"与父平面的 IP 分配重叠: {', '.join(overlapped)}")
 
     rp = RegionNetworkPlane(
         region_id=region_id,
@@ -102,103 +142,24 @@ def enable_plane_for_region(
     db.add(rp)
     db.flush()
 
-    pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == plane_type_id).first()
     log_change(
         db,
         entity_type="region_network_plane",
         entity_id=rp.id,
         action="create",
         operator=operator,
-        new_value=f"region={region_id}, plane_type={pt.name if pt else plane_type_id}, cidr={cidr}",
+        new_value=f"region={region_id}, plane_type={pt.name}, cidr={cidr}",
     )
     return rp
 
 
 def create_child_plane(db: Session, region_id: str, parent_id: str, cidr: str, operator: str) -> RegionNetworkPlane:
-    """在指定父平面下创建子平面。
-
-    深度最多 3 级（root → child → grandchild）。
-
-    Args:
-        db: 数据库会话。
-        region_id: Region ID。
-        parent_id: 父平面 ID。
-        cidr: 子平面的 CIDR 范围（必须在父平面 CIDR 内）。
-        operator: 操作者名称。
-
-    Returns:
-        新创建的 RegionNetworkPlane 对象。
-
-    Raises:
-        BusinessError: 父平面不存在、CIDR 不在父范围内、与兄弟重叠等。
-    """
-    # 校验：父节点存在且属于同一 Region
-    parent = (
-        db.query(RegionNetworkPlane)
-        .filter(
-            RegionNetworkPlane.id == parent_id,
-            RegionNetworkPlane.region_id == region_id,
-        )
-        .first()
-    )
-    if not parent:
-        raise BusinessError("父平面不存在")
-    if not parent.cidr:
-        raise BusinessError("父平面没有 CIDR 范围，无法添加子平面")
-
-    # 校验：层级深度不超过 3 级（root=0, child=1, grandchild=2）
-    depth = _get_plane_depth(db, parent)
-    if depth >= 2:
-        raise BusinessError(f"已达到最大嵌套层级限制（3级），当前深度: {depth + 1}")
-
-    # 校验：子 CIDR 必须在父 CIDR 范围内
-    child_net = parse_cidr(cidr)
-    parent_net = parse_cidr(parent.cidr)
-    if not child_net or not parent_net:
-        raise BusinessError("无效的 CIDR 格式")
-    # Python 3.7+ 用 subnet_of，3.7 以下用 supernet_of
-    subnet_check = (
-        child_net.subnet_of(parent_net) if hasattr(child_net, "subnet_of") else parent_net.supernet_of(child_net)
-    )
-    if not subnet_check:
-        raise BusinessError(f"子网 CIDR {cidr} 必须在父平面 CIDR {parent.cidr} 范围内")
-
-    # 校验：兄弟平面之间 CIDR 不重叠
-    siblings = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.parent_id == parent_id).all()
-    sibling_cidrs = [s.cidr for s in siblings if s.cidr]
-    overlapped = find_overlapping(cidr, sibling_cidrs)
-    if overlapped:
-        raise BusinessError(f"与兄弟平面 CIDR 重叠: {', '.join(overlapped)}")
-
-    # 校验：不与父层已有的 IP 分配重叠
-    parent_alloc_cidrs = [a.ip_range for a in db.query(IPAllocation).filter(IPAllocation.plane_id == parent_id).all()]
-    overlapped = find_overlapping(cidr, parent_alloc_cidrs)
-    if overlapped:
-        raise BusinessError(f"与父平面的 IP 分配重叠: {', '.join(overlapped)}")
-
-    child = RegionNetworkPlane(
-        region_id=region_id,
-        plane_type_id=parent.plane_type_id,
-        cidr=cidr,
-        parent_id=parent_id,
-    )
-    db.add(child)
-    db.flush()
-
-    pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == parent.plane_type_id).first()
-    log_change(
-        db,
-        entity_type="region_network_plane",
-        entity_id=child.id,
-        action="create",
-        operator=operator,
-        new_value=f"parent={parent_id}, plane_type={pt.name if pt else ''}, cidr={cidr}",
-    )
-    return child
+    """兼容旧接口：子平面关系现在由 NetworkPlaneType.parent_id 维护。"""
+    raise BusinessError("子平面关系由网络平面类型维护，请启用对应的子级网络平面类型")
 
 
 def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operator: str) -> bool:
-    """删除平面节点，级联删除所有子平面及其 IP 分配。
+    """删除平面节点，级联删除所有已启用的子类型平面及其 IP 分配。
 
     级联由数据库 FK CASCADE 和 ORM cascade 共同保证。
     删除前手动记录所有受影响实体的审计日志。
@@ -224,7 +185,7 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
         return False
 
     # 递归收集所有子代平面 ID（用于审计日志）
-    descendant_ids = _collect_descendant_ids(db, plane_id)
+    descendant_ids = _collect_descendant_ids(db, plane)
     all_plane_ids = [plane_id] + descendant_ids
 
     # 审计日志：记录被级联删除的 IP 分配
@@ -263,29 +224,41 @@ def disable_plane_for_region(db: Session, region_id: str, plane_id: str, operato
         old_value=f"region={region_id}, plane_type={pt_name}, cidr={plane.cidr}",
     )
 
-    # ORM delete 会通过 cascade="all, delete-orphan" 级联删除 children 和 allocations
+    for child_id in reversed(descendant_ids):
+        child = db.get(RegionNetworkPlane, child_id)
+        if child:
+            db.delete(child)
     db.delete(plane)
     db.flush()
     return True
 
 
-def _get_plane_depth(db: Session, plane: RegionNetworkPlane) -> int:
-    """递归计算平面节点的嵌套深度（root=0）。"""
-    depth = 0
-    current = plane
-    while current.parent_id:
-        depth += 1
-        current = db.get(RegionNetworkPlane, current.parent_id)
-        if not current:
-            break
-    return depth
-
-
-def _collect_descendant_ids(db: Session, plane_id: str) -> list[str]:
+def _collect_descendant_ids(db: Session, plane: RegionNetworkPlane) -> list[str]:
     """递归收集所有后代平面 ID（深度优先）。"""
-    result = []
-    children = db.query(RegionNetworkPlane).filter(RegionNetworkPlane.parent_id == plane_id).all()
+    result: list[str] = []
+    children = (
+        db.query(RegionNetworkPlane)
+        .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
+        .filter(
+            RegionNetworkPlane.region_id == plane.region_id,
+            NetworkPlaneType.parent_id == plane.plane_type_id,
+        )
+        .all()
+    )
     for child in children:
         result.append(child.id)
-        result.extend(_collect_descendant_ids(db, child.id))
+        result.extend(_collect_descendant_ids(db, child))
     return result
+
+
+def _get_enabled_child_plane_cidrs(db: Session, region_id: str, parent_type_id: str) -> list[str]:
+    rows = (
+        db.query(RegionNetworkPlane.cidr)
+        .join(NetworkPlaneType, RegionNetworkPlane.plane_type_id == NetworkPlaneType.id)
+        .filter(
+            RegionNetworkPlane.region_id == region_id,
+            NetworkPlaneType.parent_id == parent_type_id,
+        )
+        .all()
+    )
+    return [row[0] for row in rows if row[0]]

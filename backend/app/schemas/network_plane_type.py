@@ -10,6 +10,7 @@ class PlaneTypeBase(BaseModel):
     description: Optional[str] = ""
     is_private: bool = False
     vrf: Optional[str] = Field(None, max_length=100)
+    parent_id: Optional[str] = None
 
 
 class PlaneTypeCreate(PlaneTypeBase):
@@ -21,10 +22,12 @@ class PlaneTypeUpdate(BaseModel):
     description: Optional[str] = None
     is_private: Optional[bool] = None
     vrf: Optional[str] = Field(None, max_length=100)
+    parent_id: Optional[str] = None
 
 
 class PlaneTypeResponse(PlaneTypeBase):
     id: str
+    parent_name: Optional[str] = None
     region_count: int = 0
     created_at: str
     updated_at: str

@@ -11,6 +11,8 @@ from app.models.region_network_plane import RegionNetworkPlane
 from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeUpdate
 from app.services.change_log import log_change
 
+MAX_PLANE_TYPE_DEPTH = 2
+
 
 def list_plane_types(db: Session, skip: int = 0, limit: int = 100) -> tuple[list[NetworkPlaneType], int]:
     """查询网络平面类型列表。
@@ -67,6 +69,11 @@ def count_regions_for_plane_type(db: Session, pt_id: str) -> int:
     return db.query(func.count(RegionNetworkPlane.id)).filter(RegionNetworkPlane.plane_type_id == pt_id).scalar() or 0
 
 
+def count_children_for_plane_type(db: Session, pt_id: str) -> int:
+    """统计指定网络平面类型的直接子类型数量。"""
+    return db.query(func.count(NetworkPlaneType.id)).filter(NetworkPlaneType.parent_id == pt_id).scalar() or 0
+
+
 def create_plane_type(db: Session, data: PlaneTypeCreate, operator: str) -> NetworkPlaneType:
     """创建网络平面类型。
 
@@ -78,11 +85,13 @@ def create_plane_type(db: Session, data: PlaneTypeCreate, operator: str) -> Netw
     Returns:
         新创建的 NetworkPlaneType 对象。
     """
+    _validate_parent_assignment(db, target_id=None, parent_id=data.parent_id)
     pt = NetworkPlaneType(
         name=data.name,
         description=data.description or "",
         is_private=data.is_private,
         vrf=data.vrf or None,
+        parent_id=data.parent_id,
     )
     db.add(pt)
     db.flush()
@@ -92,7 +101,7 @@ def create_plane_type(db: Session, data: PlaneTypeCreate, operator: str) -> Netw
         entity_id=pt.id,
         action="create",
         operator=operator,
-        new_value=pt.name,
+        new_value=f"name={pt.name}, parent_id={pt.parent_id or ''}",
     )
     return pt
 
@@ -127,6 +136,14 @@ def update_plane_type(db: Session, pt_id: str, data: PlaneTypeUpdate, operator: 
         if new_vrf != pt.vrf:
             changes["vrf"] = (pt.vrf or "", new_vrf or "")
             pt.vrf = new_vrf
+    if "parent_id" in data.model_fields_set:
+        new_parent_id = data.parent_id or None
+        if new_parent_id != pt.parent_id:
+            if _count_regions_for_type_and_descendants(db, pt_id) > 0:
+                raise BusinessError("已被 Region 使用的网络平面类型不能调整父级")
+            _validate_parent_assignment(db, target_id=pt_id, parent_id=new_parent_id)
+            changes["parent_id"] = (pt.parent_id or "", new_parent_id or "")
+            pt.parent_id = new_parent_id
     if changes:
         for field, (old, new) in changes.items():
             log_change(
@@ -165,6 +182,9 @@ def delete_plane_type(db: Session, pt_id: str, operator: str) -> bool:
     region_count = count_regions_for_plane_type(db, pt_id)
     if region_count > 0:
         raise BusinessError(f"Cannot delete plane type in use by {region_count} region(s)")
+    child_count = count_children_for_plane_type(db, pt_id)
+    if child_count > 0:
+        raise BusinessError(f"Cannot delete plane type with {child_count} child type(s)")
     log_change(
         db,
         entity_type="network_plane_type",
@@ -176,3 +196,79 @@ def delete_plane_type(db: Session, pt_id: str, operator: str) -> bool:
     db.delete(pt)
     db.flush()
     return True
+
+
+def _validate_parent_assignment(db: Session, target_id: Optional[str], parent_id: Optional[str]) -> None:
+    if parent_id is None:
+        if target_id:
+            _ensure_descendant_depths_within_limit(db, target_id, parent_depth=-1)
+        return
+    if target_id and parent_id == target_id:
+        raise BusinessError("网络平面类型不能将自身设为父级")
+    parent = get_plane_type(db, parent_id)
+    if not parent:
+        raise BusinessError("父级网络平面类型不存在")
+    if target_id and _is_descendant(db, candidate_id=parent_id, ancestor_id=target_id):
+        raise BusinessError("网络平面类型不能移动到自己的子级下")
+    parent_depth = _get_type_depth(db, parent)
+    if parent_depth >= MAX_PLANE_TYPE_DEPTH:
+        raise BusinessError("已达到最大嵌套层级限制（3级）")
+    if target_id:
+        _ensure_descendant_depths_within_limit(db, target_id, parent_depth=parent_depth)
+
+
+def _get_type_depth(db: Session, plane_type: NetworkPlaneType) -> int:
+    depth = 0
+    current = plane_type
+    visited = {current.id}
+    while current.parent_id:
+        parent = db.get(NetworkPlaneType, current.parent_id)
+        if not parent or parent.id in visited:
+            break
+        visited.add(parent.id)
+        depth += 1
+        current = parent
+    return depth
+
+
+def _is_descendant(db: Session, candidate_id: str, ancestor_id: str) -> bool:
+    current = db.get(NetworkPlaneType, candidate_id)
+    visited: set[str] = set()
+    while current and current.parent_id and current.id not in visited:
+        visited.add(current.id)
+        if current.parent_id == ancestor_id:
+            return True
+        current = db.get(NetworkPlaneType, current.parent_id)
+    return False
+
+
+def _ensure_descendant_depths_within_limit(db: Session, target_id: str, parent_depth: int) -> None:
+    descendants = _collect_type_descendant_depths(db, target_id, relative_depth=1)
+    new_target_depth = parent_depth + 1
+    if descendants and max(new_target_depth + relative_depth for relative_depth in descendants) > MAX_PLANE_TYPE_DEPTH:
+        raise BusinessError("移动后会超过最大嵌套层级限制（3级）")
+
+
+def _collect_type_descendant_depths(db: Session, plane_type_id: str, relative_depth: int) -> list[int]:
+    result: list[int] = []
+    children = db.query(NetworkPlaneType).filter(NetworkPlaneType.parent_id == plane_type_id).all()
+    for child in children:
+        result.append(relative_depth)
+        result.extend(_collect_type_descendant_depths(db, child.id, relative_depth + 1))
+    return result
+
+
+def _count_regions_for_type_and_descendants(db: Session, plane_type_id: str) -> int:
+    type_ids = [plane_type_id] + [child.id for child in _collect_type_descendants(db, plane_type_id)]
+    return (
+        db.query(func.count(RegionNetworkPlane.id)).filter(RegionNetworkPlane.plane_type_id.in_(type_ids)).scalar() or 0
+    )
+
+
+def _collect_type_descendants(db: Session, plane_type_id: str) -> list[NetworkPlaneType]:
+    result: list[NetworkPlaneType] = []
+    children = db.query(NetworkPlaneType).filter(NetworkPlaneType.parent_id == plane_type_id).all()
+    for child in children:
+        result.append(child)
+        result.extend(_collect_type_descendants(db, child.id))
+    return result

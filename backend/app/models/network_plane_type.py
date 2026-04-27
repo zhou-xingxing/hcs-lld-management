@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -27,9 +27,16 @@ class NetworkPlaneType(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     is_private: Mapped[bool] = mapped_column(Boolean, default=False)
     vrf: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    parent_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("network_plane_types.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db, onupdate=utcnow_db)
 
     # relationships
+    parent: Mapped[NetworkPlaneType | None] = relationship(
+        "NetworkPlaneType", remote_side="NetworkPlaneType.id", back_populates="children"
+    )
+    children: Mapped[list[NetworkPlaneType]] = relationship("NetworkPlaneType", back_populates="parent")
     region_planes: Mapped[list[RegionNetworkPlane]] = relationship("RegionNetworkPlane", back_populates="plane_type")
     allocations: Mapped[list[IPAllocation]] = relationship("IPAllocation", back_populates="plane_type")

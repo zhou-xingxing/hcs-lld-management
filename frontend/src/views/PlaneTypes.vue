@@ -16,6 +16,9 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="parent_name" label="父级平面" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.parent_name || '-' }}</template>
+        </el-table-column>
         <el-table-column prop="is_private" label="是否私网" width="110" align="center">
           <template #default="{ row }">
             <el-tag :type="row.is_private ? 'success' : 'info'" size="small" effect="plain">
@@ -68,6 +71,16 @@
         <el-form-item label="类型名称" prop="name">
           <el-input v-model="form.name" placeholder="例如: 管理平面" maxlength="100" />
         </el-form-item>
+        <el-form-item label="父级平面" prop="parent_id">
+          <el-select v-model="form.parent_id" placeholder="无父级" clearable style="width: 100%">
+            <el-option
+              v-for="pt in parentOptions"
+              :key="pt.id"
+              :label="pt.name"
+              :value="pt.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选描述信息" />
         </el-form-item>
@@ -87,7 +100,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { fetchPlaneTypes, createPlaneType, updatePlaneType, deletePlaneType } from '@/api/networkPlaneTypes'
 import { useAppStore } from '@/stores/app'
 import { ElMessage } from 'element-plus'
@@ -105,7 +118,13 @@ const isEdit = ref(false)
 const submitting = ref(false)
 const editId = ref(null)
 const formRef = ref(null)
-const form = ref({ name: '', description: '', is_private: false, vrf: '' })
+const form = ref({ name: '', parent_id: '', description: '', is_private: false, vrf: '' })
+
+const parentOptions = computed(() => {
+  if (!isEdit.value || !editId.value) return items.value
+  const blocked = new Set([editId.value, ...collectDescendantIds(editId.value)])
+  return items.value.filter(item => !blocked.has(item.id))
+})
 
 const rules = {
   name: [{ required: true, message: '请输入类型名称', trigger: 'blur' }],
@@ -125,7 +144,7 @@ async function fetchData() {
 function showCreateDialog() {
   isEdit.value = false
   editId.value = null
-  form.value = { name: '', description: '', is_private: false, vrf: '' }
+  form.value = { name: '', parent_id: '', description: '', is_private: false, vrf: '' }
   dialogVisible.value = true
 }
 
@@ -134,6 +153,7 @@ function showEditDialog(row) {
   editId.value = row.id
   form.value = {
     name: row.name,
+    parent_id: row.parent_id || '',
     description: row.description || '',
     is_private: Boolean(row.is_private),
     vrf: row.vrf || '',
@@ -141,16 +161,27 @@ function showEditDialog(row) {
   dialogVisible.value = true
 }
 
+function collectDescendantIds(parentId) {
+  const result = []
+  for (const item of items.value) {
+    if (item.parent_id === parentId) {
+      result.push(item.id, ...collectDescendantIds(item.id))
+    }
+  }
+  return result
+}
+
 async function handleSubmit() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
   submitting.value = true
   try {
+    const payload = { ...form.value, parent_id: form.value.parent_id || null }
     if (isEdit.value) {
-      await updatePlaneType(editId.value, form.value)
+      await updatePlaneType(editId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await createPlaneType(form.value)
+      await createPlaneType(payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false

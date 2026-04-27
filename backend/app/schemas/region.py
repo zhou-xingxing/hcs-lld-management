@@ -40,6 +40,7 @@ class RegionPlaneResponse(BaseModel):
     plane_type_name: str
     cidr: str | None = None
     parent_id: str | None = None
+    plane_type_parent_id: str | None = None
     allocation_count: int = 0
     created_at: str
     updated_at: str

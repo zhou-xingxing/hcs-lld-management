@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user, operator_name, require_administrator
 from app.exceptions import BusinessError
+from app.models.network_plane_type import NetworkPlaneType
 from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.network_plane_type import PlaneTypeCreate, PlaneTypeResponse, PlaneTypeUpdate
@@ -34,18 +35,7 @@ def list_plane_types_endpoint(
     items, total = list_plane_types(db, skip=skip, limit=limit)
     result = []
     for pt in items:
-        result.append(
-            PlaneTypeResponse(
-                id=pt.id,
-                name=pt.name,
-                description=pt.description or "",
-                is_private=pt.is_private,
-                vrf=pt.vrf,
-                region_count=count_regions_for_plane_type(db, pt.id),
-                created_at=format_datetime(pt.created_at),
-                updated_at=format_datetime(pt.updated_at),
-            )
-        )
+        result.append(_plane_type_response(db, pt))
     return PaginatedResponse(items=result, total=total, skip=skip, limit=limit)
 
 
@@ -56,18 +46,12 @@ def create_plane_type_endpoint(
     current_user: User = Depends(require_administrator),
 ) -> PlaneTypeResponse:
     """创建网络平面类型。"""
-    pt = create_plane_type(db, data, operator_name(current_user))
+    try:
+        pt = create_plane_type(db, data, operator_name(current_user))
+    except BusinessError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     db.commit()
-    return PlaneTypeResponse(
-        id=pt.id,
-        name=pt.name,
-        description=pt.description or "",
-        is_private=pt.is_private,
-        vrf=pt.vrf,
-        region_count=0,
-        created_at=format_datetime(pt.created_at),
-        updated_at=format_datetime(pt.updated_at),
-    )
+    return _plane_type_response(db, pt, region_count=0)
 
 
 @router.get("/{pt_id}", response_model=PlaneTypeResponse)
@@ -76,16 +60,7 @@ def get_plane_type_endpoint(pt_id: str, db: Session = Depends(get_db)) -> PlaneT
     pt = get_plane_type(db, pt_id)
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
-    return PlaneTypeResponse(
-        id=pt.id,
-        name=pt.name,
-        description=pt.description or "",
-        is_private=pt.is_private,
-        vrf=pt.vrf,
-        region_count=count_regions_for_plane_type(db, pt_id),
-        created_at=format_datetime(pt.created_at),
-        updated_at=format_datetime(pt.updated_at),
-    )
+    return _plane_type_response(db, pt)
 
 
 @router.put("/{pt_id}", response_model=PlaneTypeResponse)
@@ -96,17 +71,26 @@ def update_plane_type_endpoint(
     current_user: User = Depends(require_administrator),
 ) -> PlaneTypeResponse:
     """更新网络平面类型。"""
-    pt = update_plane_type(db, pt_id, data, operator_name(current_user))
+    try:
+        pt = update_plane_type(db, pt_id, data, operator_name(current_user))
+    except BusinessError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
     db.commit()
+    return _plane_type_response(db, pt)
+
+
+def _plane_type_response(db: Session, pt: NetworkPlaneType, region_count: int | None = None) -> PlaneTypeResponse:
     return PlaneTypeResponse(
         id=pt.id,
         name=pt.name,
         description=pt.description or "",
         is_private=pt.is_private,
         vrf=pt.vrf,
-        region_count=count_regions_for_plane_type(db, pt_id),
+        parent_id=pt.parent_id,
+        parent_name=pt.parent.name if pt.parent else None,
+        region_count=count_regions_for_plane_type(db, pt.id) if region_count is None else region_count,
         created_at=format_datetime(pt.created_at),
         updated_at=format_datetime(pt.updated_at),
     )
