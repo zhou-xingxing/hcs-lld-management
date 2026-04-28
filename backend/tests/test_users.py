@@ -1,0 +1,124 @@
+"""User management API tests."""
+
+
+def test_user_management_crud_with_region_grants(client, admin_headers):
+    region_a = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
+    region_b = client.post("/api/regions", json={"name": "Region-B"}, headers=admin_headers).json()
+
+    create_response = client.post(
+        "/api/users",
+        headers=admin_headers,
+        json={
+            "username": "alice",
+            "password": "initial-password",
+            "role": "user",
+            "display_name": "Alice",
+            "region_ids": [region_a["id"]],
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["username"] == "alice"
+    assert created["display_name"] == "Alice"
+    assert created["regions"] == [{"id": region_a["id"], "name": "Region-A"}]
+
+    list_response = client.get("/api/users", headers=admin_headers)
+    assert list_response.status_code == 200
+    users = list_response.json()
+    assert users["total"] == 2
+    assert {item["username"] for item in users["items"]} == {"admin", "alice"}
+
+    update_response = client.put(
+        f"/api/users/{created['id']}",
+        headers=admin_headers,
+        json={
+            "display_name": "Alice Updated",
+            "is_active": False,
+            "region_ids": [region_b["id"]],
+        },
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["display_name"] == "Alice Updated"
+    assert updated["is_active"] is False
+    assert updated["regions"] == [{"id": region_b["id"], "name": "Region-B"}]
+
+    reset_response = client.post(
+        f"/api/users/{created['id']}/reset-password",
+        headers=admin_headers,
+        json={"password": "new-password"},
+    )
+    assert reset_response.status_code == 200
+
+    reactivate_response = client.put(
+        f"/api/users/{created['id']}",
+        headers=admin_headers,
+        json={"is_active": True},
+    )
+    assert reactivate_response.status_code == 200
+
+    login_response = client.post("/api/auth/login", json={"username": "alice", "password": "new-password"})
+    assert login_response.status_code == 200
+
+    delete_response = client.delete(f"/api/users/{created['id']}", headers=admin_headers)
+    assert delete_response.status_code == 204
+
+    missing_response = client.get("/api/users", headers=admin_headers)
+    assert missing_response.json()["total"] == 1
+
+
+def test_create_user_rejects_duplicate_username(client, admin_headers):
+    payload = {
+        "username": "duplicate",
+        "password": "password",
+        "role": "user",
+    }
+    assert client.post("/api/users", headers=admin_headers, json=payload).status_code == 201
+
+    response = client.post("/api/users", headers=admin_headers, json=payload)
+
+    assert response.status_code == 409
+    assert "用户名已存在" in response.json()["detail"]
+
+
+def test_user_management_rejects_missing_region_grant(client, admin_headers):
+    response = client.post(
+        "/api/users",
+        headers=admin_headers,
+        json={
+            "username": "missing-region-user",
+            "password": "password",
+            "role": "user",
+            "region_ids": ["missing-region-id"],
+        },
+    )
+
+    assert response.status_code == 409
+    assert "Region 不存在" in response.json()["detail"]
+
+
+def test_user_management_returns_404_for_missing_user(client, admin_headers):
+    update_response = client.put(
+        "/api/users/missing-user",
+        headers=admin_headers,
+        json={"display_name": "Nobody"},
+    )
+    reset_response = client.post(
+        "/api/users/missing-user/reset-password",
+        headers=admin_headers,
+        json={"password": "new-password"},
+    )
+    delete_response = client.delete("/api/users/missing-user", headers=admin_headers)
+
+    assert update_response.status_code == 404
+    assert reset_response.status_code == 404
+    assert delete_response.status_code == 404
+
+
+def test_delete_last_administrator_is_rejected(client, admin_headers):
+    me = client.get("/api/auth/me", headers=admin_headers).json()
+
+    response = client.delete(f"/api/users/{me['id']}", headers=admin_headers)
+
+    assert response.status_code == 409
+    assert "至少需要保留一个启用的 administrator" in response.json()["detail"]

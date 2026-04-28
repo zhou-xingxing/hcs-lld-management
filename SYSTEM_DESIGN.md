@@ -313,7 +313,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
-| status | String(20) | NOT NULL | running/success/failed |
+| status | String(20) | NOT NULL | success/failed |
 | method | String(30) | NOT NULL | 本次执行使用的备份方式 |
 | target | String(800) | NULLABLE | 本地文件路径或完整对象存储备份路径 |
 | file_size | Integer | NULLABLE | 备份文件大小（字节） |

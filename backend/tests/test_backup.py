@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import re
 import sys
-from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 
+import app.services.backup as backup_service
 from app.models.backup import BackupConfig, BackupRecord
 from app.models.region import Region
 from app.services.backup import calculate_next_run, run_due_backup, utcnow
@@ -255,6 +256,36 @@ def test_run_backup_records_object_storage_full_target(client, monkeypatch, admi
     upload_call = [call for call in calls if call[0] == "upload"][0]
     assert upload_call[2] == "hcs-lld-backup"
     assert re.fullmatch(r"hcs-lld/lld_\d{14}", upload_call[3])
+
+
+def test_run_backup_records_failed_status_when_backup_creation_fails(client, tmp_path, monkeypatch, admin_headers):
+    config_response = client.put(
+        "/api/backup/config",
+        headers=admin_headers,
+        json={
+            "enabled": False,
+            "cron_expression": "30 2 * * *",
+            "backup_file_prefix": "lld_",
+            "method": "local",
+            "local_path": str(tmp_path),
+        },
+    )
+    assert config_response.status_code == 200
+
+    def fail_create_sqlite_backup(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(backup_service, "_create_sqlite_backup", fail_create_sqlite_backup)
+
+    response = client.post("/api/backup/run", headers=admin_headers)
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["status"] == "failed"
+    assert data["error_message"] == "disk full"
+    assert data["finished_at"] is not None
+    assert data["target"] is None
+    assert data["file_size"] is None
 
 
 def test_list_backup_records(client, tmp_path, admin_headers):
