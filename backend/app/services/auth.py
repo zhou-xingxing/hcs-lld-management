@@ -176,7 +176,7 @@ def ensure_bootstrap_admin(db: Session) -> None:
         is_active=True,
     )
     db.add(admin)
-    db.commit()
+    db.flush()
 
 
 def user_to_response(user: User) -> dict[str, Any]:

@@ -23,7 +23,6 @@ router = APIRouter(prefix="/api/backup", tags=["Backup"], dependencies=[Depends(
 def get_config_endpoint(db: Session = Depends(get_db)) -> BackupConfigResponse:
     """获取全局备份配置。"""
     config = get_backup_config(db)
-    db.commit()
     return _to_config_response(config)
 
 
@@ -37,9 +36,7 @@ def update_config_endpoint(
     try:
         config = update_backup_config(db, data, operator_name(current_user))
     except BusinessError as e:
-        db.rollback()
         raise HTTPException(status_code=409, detail=str(e))
-    db.commit()
     return _to_config_response(config)
 
 
@@ -52,9 +49,7 @@ def run_backup_endpoint(
     try:
         record = run_backup(db, operator=operator_name(current_user), scheduled=False)
     except BusinessError as e:
-        db.rollback()
         raise HTTPException(status_code=409, detail=str(e))
-    db.commit()
     return _to_record_response(record)
 
 

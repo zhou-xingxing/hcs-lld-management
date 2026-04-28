@@ -187,7 +187,6 @@ def confirm_import(preview_id: str, operator: str, db: Session) -> dict[str, Any
         except Exception as e:
             errors.append({"row": row["row_number"], "errors": [str(e)]})
 
-    db.commit()
     return {
         "success": True,
         "imported_count": imported,

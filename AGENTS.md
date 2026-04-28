@@ -88,6 +88,7 @@ routers/  →  services/  →  models/
 - **导入两阶段**：`preview` → `confirm`。预览数据在内存缓存（TTL 30min，`IMPORT_TTL_MINUTES`）。见 `app/services/excel.py`。
 - **启动时建表**：`main.py` lifespan 调用 `Base.metadata.create_all()`，Alembic 仍管迁移，但新部署无需手动建表。
 - **Alembic 配置**：`render_as_batch=True`（`alembic/env.py`），兼容 SQLite 的 ALTER TABLE 限制。
+- **事务边界**：HTTP 请求路径由 `get_db()` 统一 `commit/rollback`。Service 层禁止调用 `db.commit()` / `db.rollback()`，只在需要获取 ID、触发约束或保证同事务内可见时使用 `db.flush()`。非 HTTP 入口（如启动初始化、后台调度任务）必须在入口函数显式管理事务。
 
 ### 前端
 

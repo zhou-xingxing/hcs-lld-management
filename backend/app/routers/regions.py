@@ -74,7 +74,6 @@ def create_region_endpoint(
         region = create_region(db, data, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    db.commit()
     return RegionResponse(
         id=region.id,
         name=region.name,
@@ -105,7 +104,6 @@ def update_region_endpoint(
     region = update_region(db, region_id, data, operator_name(current_user))
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
-    db.commit()
     return RegionResponse(
         id=region.id,
         name=region.name,
@@ -126,7 +124,6 @@ def delete_region_endpoint(
     deleted = delete_region(db, region_id, operator_name(current_user))
     if not deleted:
         raise HTTPException(status_code=404, detail="Region not found")
-    db.commit()
 
 
 # Region-Plan association endpoints
@@ -174,7 +171,6 @@ def enable_plane_endpoint(
         )
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    db.commit()
     parent_plane_id = None
     if pt.parent_id:
         parent_plane = (
@@ -250,4 +246,3 @@ def disable_plane_endpoint(
     deleted = disable_plane_for_region(db, region_id, plane_id, operator_name(current_user))
     if not deleted:
         raise HTTPException(status_code=404, detail="Region plane association not found")
-    db.commit()

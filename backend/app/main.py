@@ -18,6 +18,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     db = SessionLocal()
     try:
         ensure_bootstrap_admin(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
     backup_scheduler.start()

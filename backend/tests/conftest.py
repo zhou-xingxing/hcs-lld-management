@@ -35,6 +35,10 @@ def test_db():
     bootstrap_db = TestSessionLocal()
     try:
         ensure_bootstrap_admin(bootstrap_db)
+        bootstrap_db.commit()
+    except Exception:
+        bootstrap_db.rollback()
+        raise
     finally:
         bootstrap_db.close()
 
@@ -42,6 +46,10 @@ def test_db():
         db = TestSessionLocal()
         try:
             yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
 

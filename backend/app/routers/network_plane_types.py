@@ -50,7 +50,6 @@ def create_plane_type_endpoint(
         pt = create_plane_type(db, data, operator_name(current_user))
     except BusinessError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    db.commit()
     return _plane_type_response(db, pt, region_count=0)
 
 
@@ -77,7 +76,6 @@ def update_plane_type_endpoint(
         raise HTTPException(status_code=409, detail=str(e))
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
-    db.commit()
     return _plane_type_response(db, pt)
 
 
@@ -109,4 +107,3 @@ def delete_plane_type_endpoint(
         raise HTTPException(status_code=409, detail=str(e))
     if not deleted:
         raise HTTPException(status_code=404, detail="Plane type not found")
-    db.commit()

@@ -34,9 +34,7 @@ def create_user_endpoint(data: UserCreate, db: Session = Depends(get_db)) -> Use
     try:
         user = create_user(db, data)
     except BusinessError as e:
-        db.rollback()
         raise HTTPException(status_code=409, detail=str(e))
-    db.commit()
     return UserResponse(**user_to_response(user))
 
 
@@ -46,11 +44,9 @@ def update_user_endpoint(user_id: str, data: UserUpdate, db: Session = Depends(g
     try:
         user = update_user(db, user_id, data)
     except BusinessError as e:
-        db.rollback()
         raise HTTPException(status_code=409, detail=str(e))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    db.commit()
     return UserResponse(**user_to_response(user))
 
 
@@ -60,7 +56,6 @@ def reset_password_endpoint(user_id: str, data: PasswordReset, db: Session = Dep
     user = reset_password(db, user_id, data.password)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    db.commit()
     return UserResponse(**user_to_response(user))
 
 
@@ -74,8 +69,6 @@ def delete_user_endpoint(
     try:
         deleted = delete_user(db, user_id)
     except BusinessError as e:
-        db.rollback()
         raise HTTPException(status_code=409, detail=str(e))
     if not deleted:
         raise HTTPException(status_code=404, detail="User not found")
-    db.commit()
