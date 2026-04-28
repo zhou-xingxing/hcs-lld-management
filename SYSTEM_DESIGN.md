@@ -22,7 +22,7 @@ HCS（华为云Stack）是企业内部部署的私有云平台。LLD（Low Level
 | Excel 导入 | 按模板格式上传 Excel，支持预览验证后批量导入 |
 | Excel 导出 | 按 Region/网络平面过滤导出为 Excel |
 | 变更追溯 | 所有数据操作（创建/更新/删除/导入）自动记录变更日志，可查询操作者、时间、变更内容 |
-| 数据备份 | 支持配置备份目标，手动立即备份，按每天/每周固定时间自动备份 |
+| 数据备份 | 支持配置备份目标，手动立即备份，按五段式 cron 表达式自动备份 |
 | 认证与权限 | 支持本地账号登录，按 administrator / user 两类角色控制全局配置和 Region 业务数据写权限 |
 
 ## 3. 技术选型
@@ -169,10 +169,8 @@ erDiagram
     BackupConfig {
         string id PK
         bool   enabled
-        string frequency
-        int    schedule_hour
-        int    schedule_minute
-        int    schedule_weekday
+        string cron_expression
+        string backup_file_prefix
         string method
         string local_path
         string endpoint_url
@@ -180,7 +178,6 @@ erDiagram
         string secret_key
         string bucket
         string object_prefix
-        datetime last_run_at
         datetime next_run_at
         datetime created_at
         datetime updated_at
@@ -296,10 +293,8 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
 | enabled | Boolean | NOT NULL, default=false | 是否启用定时备份任务 |
-| frequency | String(20) | NOT NULL, default='daily' | daily/weekly |
-| schedule_hour | Integer | NOT NULL, default=2 | 备份小时，0-23 |
-| schedule_minute | Integer | NOT NULL, default=0 | 备份分钟，0-59 |
-| schedule_weekday | Integer | NULLABLE | 每周备份的星期，1=周一，7=周日 |
+| cron_expression | String(100) | NOT NULL, default='0 2 * * *' | 五段式 cron 表达式：分 时 日 月 周，秒固定为 0 |
+| backup_file_prefix | String(200) | NOT NULL, default='hcs_lld_data_backup_' | 备份文件名前缀，实际文件名为 `{backup_file_prefix}{YYYYMMDDHHMMSS}` |
 | method | String(30) | NOT NULL, default='local' | local/object_storage |
 | local_path | String(500) | NULLABLE | 本地备份目录 |
 | endpoint_url | String(500) | NULLABLE | S3 兼容对象存储 Endpoint |
@@ -307,12 +302,11 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | secret_key | String(500) | NULLABLE | 对象存储 SK |
 | bucket | String(200) | NULLABLE | 对象存储 Bucket |
 | object_prefix | String(300) | NULLABLE | 对象 Key 前缀 |
-| last_run_at | DateTime | NULLABLE | 上次备份完成时间 |
 | next_run_at | DateTime | NULLABLE | 下次定时备份时间 |
 | created_at | DateTime | NOT NULL | 创建时间 |
 | updated_at | DateTime | NOT NULL, onupdate | 更新时间 |
 
-**设计决策**：备份目标配置与定时任务配置存在同一张全局配置表中，但语义上分离。`method/local_path/object_storage` 是手动备份和定时备份共享的备份目标；`enabled/frequency/schedule_*` 只控制自动触发。
+**设计决策**：备份目标配置、文件命名配置与定时任务配置存在同一张全局配置表中，但语义上分离。`method/local_path/object_storage/backup_file_prefix` 是手动备份和定时备份共享的备份目标与命名配置；`enabled/cron_expression` 只控制自动触发。
 
 #### backup_records
 
@@ -321,7 +315,7 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 | id | String(36) UUID | PK | UUID v4 |
 | status | String(20) | NOT NULL | running/success/failed |
 | method | String(30) | NOT NULL | 本次执行使用的备份方式 |
-| target | String(800) | NULLABLE | 本地文件路径或 s3://bucket/key |
+| target | String(800) | NULLABLE | 本地文件路径或完整对象存储备份路径 |
 | file_size | Integer | NULLABLE | 备份文件大小（字节） |
 | error_message | Text | NULLABLE | 失败原因 |
 | operator | String(100) | NOT NULL | 操作者，定时任务为 system |
@@ -389,9 +383,11 @@ GET /api/backup/config
 
 PUT /api/backup/config
   → 更新备份目标和定时任务配置
-  → 每天备份需要 schedule_hour + schedule_minute
-  → 每周备份需要 schedule_weekday + schedule_hour + schedule_minute
-  → 启用定时任务时按固定日程计算 next_run_at
+  → backup_file_prefix 控制备份文件名前缀，实际文件名为 backup_file_prefix + YYYYMMDDHHMMSS
+  → cron_expression 使用五段式 cron：分 时 日 月 周，秒固定为 0
+  → 支持 *、数字、列表、范围和步长，例如 0 2 * * *、*/15 * * * *、30 3 * * 1-5
+  → 保存时校验备份目标可用
+  → 启用定时任务时按 cron_expression 计算 next_run_at
 
 POST /api/backup/run
   → 立即执行一次备份
@@ -508,21 +504,27 @@ GET /api/backup/records
 1. 应用启动时创建表并启动后台调度器
 2. 调度器定期读取全局配置，未启用时跳过
 3. 当前时间到达 `next_run_at` 时调用 `run_backup()`
-4. 备份完成后按 `frequency + schedule_*` 重新计算下一次执行时间
+4. 备份完成后按 `cron_expression` 重新计算下一次执行时间
 5. 手动备份复用同一个 `run_backup()`，但不依赖 `enabled`
 
-**备份文件生成**：当前数据库为 SQLite，服务从 SQLAlchemy Session 获取底层 SQLite 连接，通过 `iterdump()` 导出 SQL，再写入新的 `.sqlite` 文件。文件命名格式为 `hcs_lld_data_backup_YYYYMMDDHHMMSS.sqlite`。
+**备份文件生成**：当前数据库为 SQLite，服务从 SQLAlchemy Session 获取底层 SQLite 连接，通过 `iterdump()` 导出 SQL，再写入新的备份文件。文件命名格式为 `{backup_file_prefix}{YYYYMMDDHHMMSS}`，默认如 `hcs_lld_data_backup_20260428143005`。
+
+**保存配置校验决策**：保存备份配置时执行轻量目标探测，不触发真实数据库备份。
+
+**理由**：备份配置保存成功应尽量代表目标路径、对象存储凭据和 Bucket 可用，但保存表单不应产生完整备份文件、对象存储流量和执行历史噪声。轻量探测能在保存阶段暴露路径不可写、AK/SK 错误、Bucket 不存在等配置问题，同时保持“保存配置”和“立即备份”的语义边界清晰。
+
+**探测方式**：本地文件模式会创建目录并写入/删除一个探测文件；对象存储模式会使用当前 Endpoint、AK/SK、Bucket 和对象前缀上传一个空探测对象，并尽量删除该探测对象。
 
 **备份目标**：
 
 - local：文件直接保存到 `local_path`
-- object_storage：先生成临时文件，再通过 boto3 上传到 S3 兼容对象存储，目标为 `s3://{bucket}/{object_prefix}/{filename}`
+- object_storage：先生成临时文件，再通过 boto3 上传到 S3 兼容对象存储。完整备份路径为 `endpoint_url + bucket + object_prefix + 备份文件名`；实现会归一化斜杠，记录为 `{endpoint_url}/{bucket}/{object_prefix}/{backup_file_prefix}{YYYYMMDDHHMMSS}`
 
 **限制**：当前实现只支持 SQLite 数据库备份；若未来切换 PostgreSQL/MySQL，需要替换备份生成策略（如 pg_dump/mysqldump 或数据库原生快照）。
 
 ### 7.9 时间与时区策略
 
-**决策**：业务时间统一按 UTC 存储和传输，用户配置的定时备份时分按系统业务时区解释。默认业务时区为 `Asia/Shanghai`，通过 `APP_TIMEZONE` 配置。
+**决策**：业务时间统一按 UTC 存储和传输，用户配置的定时备份 cron 表达式按系统业务时区解释。默认业务时区为 `Asia/Shanghai`，通过后端部署配置 `APP_TIMEZONE` 控制，不在前端开放修改。
 
 **具体约定**：
 
@@ -530,9 +532,9 @@ GET /api/backup/records
 2. SQLite `DateTime` 字段保存 naive UTC datetime，读取后统一按 UTC 解释
 3. API 返回带 `+00:00` 的 ISO 8601 字符串
 4. 前端展示统一按 `Asia/Shanghai` 格式化
-5. 定时备份的 `schedule_hour/schedule_minute/schedule_weekday` 按 `APP_TIMEZONE` 解释，再转换为 UTC `next_run_at` 保存
+5. 定时备份的 `cron_expression` 按 `APP_TIMEZONE` 解释，再转换为 UTC `next_run_at` 保存
 
-**理由**：UTC 存储避免服务器本地时区变化导致排序、过滤和调度判断漂移；业务时区解释定时任务，符合用户对“每天 02:30 / 每周一 02:30”的直觉。
+**理由**：UTC 存储避免服务器本地时区变化导致排序、过滤和调度判断漂移；业务时区解释定时任务，符合用户对 `0 2 * * *` 表示“每天业务时区 02:00”的直觉。
 
 ### 7.10 认证鉴权机制
 

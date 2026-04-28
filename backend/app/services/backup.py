@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 import sqlite3
 import tempfile
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol, cast
 
 from sqlalchemy.orm import Session
 
@@ -17,48 +18,150 @@ from app.services.change_log import log_change
 from app.utils.time_utils import app_timezone, to_db_datetime, to_utc, utcnow
 
 logger = logging.getLogger(__name__)
-BACKUP_FILENAME_PREFIX = "hcs_lld_data_backup"
+DEFAULT_BACKUP_FILE_PREFIX = "hcs_lld_data_backup_"
+CRON_RANGES = (
+    (0, 59, "分钟"),
+    (0, 23, "小时"),
+    (1, 31, "日期"),
+    (1, 12, "月份"),
+    (0, 7, "星期"),
+)
+MAX_CRON_LOOKAHEAD_MINUTES = 5 * 366 * 24 * 60
 
 
-def calculate_next_run(
-    base_time: datetime,
-    frequency: str,
-    schedule_hour: int,
-    schedule_minute: int,
-    schedule_weekday: Optional[int] = None,
-) -> datetime:
-    """计算下一次备份时间。
+class ObjectStorageClient(Protocol):
+    """S3-compatible client methods used by backup service."""
+
+    def put_object(self, **kwargs: object) -> object:
+        """Upload a small object used for target validation."""
+
+    def delete_object(self, **kwargs: object) -> object:
+        """Delete a target-validation probe object."""
+
+    def upload_file(self, Filename: str, Bucket: str, Key: str) -> object:  # noqa: N803
+        """Upload a generated backup file."""
+
+
+def calculate_next_run(base_time: datetime, cron_expression: str) -> datetime:
+    """根据五段式 cron 表达式计算下一次备份时间。
 
     Args:
         base_time: 计算基准时间。
-        frequency: 备份周期，支持 daily 和 weekly。
-        schedule_hour: 备份小时，0-23。
-        schedule_minute: 备份分钟，0-59。
-        schedule_weekday: 每周备份的星期，1 表示周一，7 表示周日。
+        cron_expression: 五段式 cron 表达式，格式为 分 时 日 月 周，秒固定为 0。
 
     Returns:
         下一次应执行备份的 timezone-aware UTC 时间。
 
     Raises:
-        BusinessError: 周期值不受支持。
+        BusinessError: cron 表达式不合法，或无法在允许范围内计算出下次运行时间。
     """
+    cron = parse_cron_expression(cron_expression)
     tz = app_timezone()
     base_local = to_utc(base_time).astimezone(tz)
-    candidate = base_local.replace(hour=schedule_hour, minute=schedule_minute, second=0, microsecond=0)
-    if frequency == "daily":
-        if candidate <= base_local:
-            candidate += timedelta(days=1)
-        return candidate.astimezone(to_utc(base_time).tzinfo)
-    if frequency == "weekly":
-        if schedule_weekday is None:
-            raise BusinessError("每周备份必须选择星期")
-        target_weekday = schedule_weekday - 1
-        days_ahead = (target_weekday - base_local.weekday()) % 7
-        candidate += timedelta(days=days_ahead)
-        if candidate <= base_local:
-            candidate += timedelta(weeks=1)
-        return candidate.astimezone(to_utc(base_time).tzinfo)
-    raise BusinessError(f"Unsupported backup frequency: {frequency}")
+    candidate = base_local.replace(second=0, microsecond=0) + timedelta(minutes=1)
+
+    for _ in range(MAX_CRON_LOOKAHEAD_MINUTES):
+        if _cron_matches(candidate, cron):
+            return candidate.astimezone(to_utc(base_time).tzinfo)
+        candidate += timedelta(minutes=1)
+    raise BusinessError("无法在未来 5 年内计算出下一次备份时间")
+
+
+def parse_cron_expression(cron_expression: str) -> tuple[set[int], set[int], set[int], set[int], set[int]]:
+    """解析五段式 cron 表达式。
+
+    支持 `*`、数字、列表、范围和步长，例如 `0 2 * * *`、`*/15 * * * *`、`30 3 * * 1-5`。
+
+    Args:
+        cron_expression: 五段式 cron 表达式，格式为 分 时 日 月 周。
+
+    Returns:
+        每个 cron 字段允许值的集合。
+
+    Raises:
+        BusinessError: cron 表达式不合法。
+    """
+    fields = cron_expression.strip().split()
+    if len(fields) != 5:
+        raise BusinessError("Cron 表达式必须是 5 段格式: 分 时 日 月 周")
+    return (
+        _parse_cron_field(fields[0], *CRON_RANGES[0]),
+        _parse_cron_field(fields[1], *CRON_RANGES[1]),
+        _parse_cron_field(fields[2], *CRON_RANGES[2]),
+        _parse_cron_field(fields[3], *CRON_RANGES[3]),
+        _parse_cron_field(fields[4], *CRON_RANGES[4]),
+    )
+
+
+def _parse_cron_field(field: str, min_value: int, max_value: int, label: str) -> set[int]:
+    values: set[int] = set()
+    for part in field.split(","):
+        values.update(_parse_cron_part(part.strip(), min_value, max_value, label))
+    if not values:
+        raise BusinessError(f"Cron {label}字段不能为空")
+    return values
+
+
+def _parse_cron_part(part: str, min_value: int, max_value: int, label: str) -> set[int]:
+    if not part:
+        raise BusinessError(f"Cron {label}字段包含空片段")
+
+    base, step = _split_step(part, label)
+    if base == "*":
+        start = min_value
+        end = max_value
+    elif "-" in base:
+        start_text, end_text = base.split("-", 1)
+        start = _parse_int(start_text, label)
+        end = _parse_int(end_text, label)
+        if start > end:
+            raise BusinessError(f"Cron {label}范围起始值不能大于结束值")
+    else:
+        value = _parse_int(base, label)
+        _validate_cron_value(value, min_value, max_value, label)
+        return {value}
+
+    _validate_cron_value(start, min_value, max_value, label)
+    _validate_cron_value(end, min_value, max_value, label)
+    return set(range(start, end + 1, step))
+
+
+def _split_step(part: str, label: str) -> tuple[str, int]:
+    if "/" not in part:
+        return part, 1
+    base, step_text = part.split("/", 1)
+    step = _parse_int(step_text, label)
+    if step <= 0:
+        raise BusinessError(f"Cron {label}步长必须大于 0")
+    return base, step
+
+
+def _parse_int(value: str, label: str) -> int:
+    if not value.isdigit():
+        raise BusinessError(f"Cron {label}字段包含非数字值")
+    return int(value)
+
+
+def _validate_cron_value(value: int, min_value: int, max_value: int, label: str) -> None:
+    if value < min_value or value > max_value:
+        raise BusinessError(f"Cron {label}字段必须在 {min_value}-{max_value} 范围内")
+
+
+def _cron_matches(candidate: datetime, cron: tuple[set[int], set[int], set[int], set[int], set[int]]) -> bool:
+    minute_values, hour_values, day_values, month_values, weekday_values = cron
+    cron_weekday = (candidate.weekday() + 1) % 7
+    weekday_match = cron_weekday in weekday_values or (cron_weekday == 0 and 7 in weekday_values)
+    day_match = candidate.day in day_values
+    if day_values != set(range(1, 32)) and weekday_values != set(range(0, 8)):
+        day_match = day_match or weekday_match
+    else:
+        day_match = day_match and weekday_match
+    return (
+        candidate.minute in minute_values
+        and candidate.hour in hour_values
+        and day_match
+        and candidate.month in month_values
+    )
 
 
 def get_backup_config(db: Session) -> BackupConfig:
@@ -76,10 +179,8 @@ def get_backup_config(db: Session) -> BackupConfig:
 
     config = BackupConfig(
         enabled=False,
-        frequency="daily",
-        schedule_hour=2,
-        schedule_minute=0,
-        schedule_weekday=1,
+        cron_expression="0 2 * * *",
+        backup_file_prefix=DEFAULT_BACKUP_FILE_PREFIX,
         method="local",
         local_path=settings.BACKUP_DEFAULT_LOCAL_PATH,
     )
@@ -103,10 +204,8 @@ def update_backup_config(db: Session, data: BackupConfigUpdate, operator: str) -
     old_value = _config_snapshot(config)
 
     config.enabled = data.enabled
-    config.frequency = data.frequency
-    config.schedule_hour = data.schedule_hour
-    config.schedule_minute = data.schedule_minute
-    config.schedule_weekday = data.schedule_weekday if data.frequency == "weekly" else None
+    config.cron_expression = data.cron_expression.strip()
+    config.backup_file_prefix = data.backup_file_prefix.strip()
     config.method = data.method
     config.local_path = data.local_path
     config.endpoint_url = data.endpoint_url
@@ -115,6 +214,7 @@ def update_backup_config(db: Session, data: BackupConfigUpdate, operator: str) -
     config.bucket = data.bucket
     config.object_prefix = data.object_prefix
     _validate_config(config)
+    _validate_backup_target(config)
     config.next_run_at = to_db_datetime(_next_run_from_config(config, utcnow())) if data.enabled else None
     db.flush()
 
@@ -186,10 +286,10 @@ def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -
         record.status = "success"
         record.target = target
         record.file_size = file_size
-        record.finished_at = to_db_datetime(utcnow())
-        config.last_run_at = record.finished_at
+        finished_at = to_db_datetime(utcnow())
+        record.finished_at = finished_at
         if config.enabled:
-            config.next_run_at = to_db_datetime(_next_run_from_config(config, record.finished_at))
+            config.next_run_at = to_db_datetime(_next_run_from_config(config, finished_at))
         db.flush()
 
         log_change(
@@ -204,9 +304,10 @@ def run_backup(db: Session, operator: str = "system", scheduled: bool = False) -
     except Exception as exc:
         record.status = "failed"
         record.error_message = str(exc)
-        record.finished_at = to_db_datetime(utcnow())
+        finished_at = to_db_datetime(utcnow())
+        record.finished_at = finished_at
         if config.enabled:
-            config.next_run_at = to_db_datetime(_next_run_from_config(config, record.finished_at))
+            config.next_run_at = to_db_datetime(_next_run_from_config(config, finished_at))
         db.flush()
         if isinstance(exc, BusinessError):
             raise
@@ -236,8 +337,11 @@ def run_due_backup(db: Session) -> Optional[BackupRecord]:
 
 
 def _validate_config(config: BackupConfig) -> None:
-    if config.frequency == "weekly" and config.schedule_weekday is None:
-        raise BusinessError("每周备份必须选择星期")
+    parse_cron_expression(config.cron_expression)
+    if not config.backup_file_prefix:
+        raise BusinessError("备份文件名前缀不能为空")
+    if "/" in config.backup_file_prefix or "\\" in config.backup_file_prefix:
+        raise BusinessError("备份文件名前缀不能包含路径分隔符")
     if config.method == "local" and not config.local_path:
         raise BusinessError("本地备份路径不能为空")
     if config.method == "object_storage":
@@ -249,19 +353,52 @@ def _validate_config(config: BackupConfig) -> None:
             raise BusinessError(f"对象存储配置不完整: {', '.join(missing)}")
 
 
+def _validate_backup_target(config: BackupConfig) -> None:
+    if config.method == "local":
+        _validate_local_backup_path(config)
+    else:
+        _validate_object_storage_target(config)
+
+
+def _validate_local_backup_path(config: BackupConfig) -> None:
+    target_dir = Path(config.local_path or settings.BACKUP_DEFAULT_LOCAL_PATH)
+    probe_file = target_dir / f".hcs_lld_backup_probe_{uuid.uuid4().hex}.tmp"
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        probe_file.write_bytes(b"ok")
+    except OSError as exc:
+        raise BusinessError(f"本地备份路径不可写: {exc}") from exc
+    finally:
+        try:
+            probe_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _validate_object_storage_target(config: BackupConfig) -> None:
+    client = _create_object_storage_client(config)
+    bucket = _required_object_storage_value(config.bucket, "bucket")
+    prefix = (config.object_prefix or "").strip("/")
+    object_key = f".hcs_lld_backup_probe_{uuid.uuid4().hex}"
+    if prefix:
+        object_key = f"{prefix}/{object_key}"
+    try:
+        client.put_object(Bucket=bucket, Key=object_key, Body=b"")
+    except Exception as exc:
+        raise BusinessError(f"对象存储备份目标校验失败: {exc}") from exc
+    try:
+        client.delete_object(Bucket=bucket, Key=object_key)
+    except Exception:
+        logger.warning("Failed to delete object storage backup probe: %s", object_key, exc_info=True)
+
+
 def _next_run_from_config(config: BackupConfig, base_time: datetime) -> datetime:
-    return calculate_next_run(
-        base_time,
-        config.frequency,
-        config.schedule_hour,
-        config.schedule_minute,
-        config.schedule_weekday,
-    )
+    return calculate_next_run(base_time, config.cron_expression)
 
 
 def _create_sqlite_backup(db: Session, config: BackupConfig) -> Path:
     timestamp = utcnow().strftime("%Y%m%d%H%M%S")
-    filename = f"{BACKUP_FILENAME_PREFIX}_{timestamp}.sqlite"
+    filename = f"{config.backup_file_prefix}{timestamp}"
     target_dir = Path(config.local_path or settings.BACKUP_DEFAULT_LOCAL_PATH)
     if config.method == "object_storage":
         target_dir = Path(tempfile.gettempdir()) / "hcs_lld_backups"
@@ -284,28 +421,48 @@ def _get_sqlite_connection(db: Session) -> sqlite3.Connection:
 
 
 def _upload_object_storage(config: BackupConfig, backup_file: Path) -> str:
+    client = _create_object_storage_client(config)
+    bucket = _required_object_storage_value(config.bucket, "bucket")
+    prefix = (config.object_prefix or "").strip("/")
+    object_key = f"{prefix}/{backup_file.name}" if prefix else backup_file.name
+    client.upload_file(str(backup_file), bucket, object_key)
+    return _build_object_storage_target(config, object_key)
+
+
+def _build_object_storage_target(config: BackupConfig, object_key: str) -> str:
+    endpoint = _required_object_storage_value(config.endpoint_url, "endpoint_url").rstrip("/")
+    bucket = _required_object_storage_value(config.bucket, "bucket")
+    return f"{endpoint}/{bucket}/{object_key.lstrip('/')}"
+
+
+def _create_object_storage_client(config: BackupConfig) -> ObjectStorageClient:
     try:
         import boto3
     except ImportError as exc:
         raise BusinessError("对象存储备份需要安装 boto3 依赖") from exc
 
-    prefix = (config.object_prefix or "").strip("/")
-    object_key = f"{prefix}/{backup_file.name}" if prefix else backup_file.name
-    client = boto3.client(
-        "s3",
-        endpoint_url=config.endpoint_url,
-        aws_access_key_id=config.access_key,
-        aws_secret_access_key=config.secret_key,
+    return cast(
+        ObjectStorageClient,
+        boto3.client(
+            "s3",
+            endpoint_url=_required_object_storage_value(config.endpoint_url, "endpoint_url"),
+            aws_access_key_id=_required_object_storage_value(config.access_key, "access_key"),
+            aws_secret_access_key=_required_object_storage_value(config.secret_key, "secret_key"),
+        ),
     )
-    client.upload_file(str(backup_file), config.bucket, object_key)
-    return f"s3://{config.bucket}/{object_key}"
+
+
+def _required_object_storage_value(value: Optional[str], field_name: str) -> str:
+    if not value:
+        raise BusinessError(f"对象存储配置不完整: {field_name}")
+    return value
 
 
 def _config_snapshot(config: BackupConfig) -> str:
     secret_state = "configured" if config.secret_key else "empty"
     return (
-        f"enabled={config.enabled};frequency={config.frequency};"
-        f"schedule={config.schedule_weekday or ''} {config.schedule_hour:02d}:{config.schedule_minute:02d};"
+        f"enabled={config.enabled};cron_expression={config.cron_expression};"
+        f"backup_file_prefix={config.backup_file_prefix};"
         f"method={config.method};"
         f"local_path={config.local_path or ''};endpoint_url={config.endpoint_url or ''};"
         f"access_key={config.access_key or ''};secret_key={secret_state};"

@@ -33,6 +33,15 @@
           </el-radio-group>
         </el-form-item>
 
+        <el-form-item label="文件名前缀" prop="backup_file_prefix">
+          <el-input
+            v-model="form.backup_file_prefix"
+            placeholder="hcs_lld_data_backup_"
+            clearable
+            class="prefix-input"
+          />
+        </el-form-item>
+
         <el-form-item v-if="form.method === 'local'" label="本地路径" prop="local_path">
           <el-input v-model="form.local_path" placeholder="./backups" clearable />
         </el-form-item>
@@ -74,35 +83,16 @@
           <el-switch v-model="form.enabled" active-text="开启" inactive-text="关闭" />
         </el-form-item>
 
-        <el-form-item label="备份周期" prop="frequency">
-          <el-segmented v-model="form.frequency" :options="frequencyOptions" />
+        <el-form-item label="Cron 表达式" prop="cron_expression">
+          <el-input
+            v-model="form.cron_expression"
+            placeholder="0 2 * * *"
+            clearable
+            class="cron-input"
+          />
+          <div class="form-tip">五段式：分 时 日 月 周，秒固定为 0</div>
         </el-form-item>
 
-        <el-form-item v-if="form.frequency === 'weekly'" label="备份星期" prop="schedule_weekday">
-          <el-select v-model="form.schedule_weekday" placeholder="请选择星期" style="width: 180px">
-            <el-option v-for="item in weekdayOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="备份时间" required>
-          <div class="time-row">
-            <el-form-item prop="schedule_hour" class="inline-form-item">
-              <el-select v-model="form.schedule_hour" placeholder="时" style="width: 120px">
-                <el-option v-for="hour in hourOptions" :key="hour" :label="`${pad2(hour)} 时`" :value="hour" />
-              </el-select>
-            </el-form-item>
-            <span class="time-separator">:</span>
-            <el-form-item prop="schedule_minute" class="inline-form-item">
-              <el-select v-model="form.schedule_minute" placeholder="分" style="width: 120px">
-                <el-option v-for="minute in minuteOptions" :key="minute" :label="`${pad2(minute)} 分`" :value="minute" />
-              </el-select>
-            </el-form-item>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="上次执行">
-          <span class="readonly-text">{{ formatDate(config?.last_run_at) }}</span>
-        </el-form-item>
         <el-form-item label="下次执行">
           <span class="readonly-text">{{ form.enabled ? formatDate(config?.next_run_at) : '未启用' }}</span>
         </el-form-item>
@@ -182,10 +172,8 @@ const pageSize = ref(10)
 
 const form = reactive({
   enabled: false,
-  frequency: 'daily',
-  schedule_hour: 2,
-  schedule_minute: 0,
-  schedule_weekday: 1,
+  cron_expression: '0 2 * * *',
+  backup_file_prefix: 'hcs_lld_data_backup_',
   method: 'local',
   local_path: './backups',
   endpoint_url: '',
@@ -195,29 +183,23 @@ const form = reactive({
   object_prefix: '',
 })
 
-const frequencyOptions = [
-  { label: '每天', value: 'daily' },
-  { label: '每周', value: 'weekly' },
-]
-
-const weekdayOptions = [
-  { label: '周一', value: 1 },
-  { label: '周二', value: 2 },
-  { label: '周三', value: 3 },
-  { label: '周四', value: 4 },
-  { label: '周五', value: 5 },
-  { label: '周六', value: 6 },
-  { label: '周日', value: 7 },
-]
-
-const hourOptions = Array.from({ length: 24 }, (_, index) => index)
-const minuteOptions = Array.from({ length: 60 }, (_, index) => index)
-
 const rules = computed(() => ({
-  frequency: [{ required: true, message: '请选择备份周期', trigger: 'change' }],
-  schedule_hour: [{ required: true, message: '请选择小时', trigger: 'change' }],
-  schedule_minute: [{ required: true, message: '请选择分钟', trigger: 'change' }],
-  schedule_weekday: form.frequency === 'weekly' ? [{ required: true, message: '请选择星期', trigger: 'change' }] : [],
+  cron_expression: [
+    { required: true, message: '请输入 Cron 表达式', trigger: 'blur' },
+    {
+      pattern: /^(\S+\s+){4}\S+$/,
+      message: '请输入五段式 Cron 表达式',
+      trigger: 'blur',
+    },
+  ],
+  backup_file_prefix: [
+    { required: true, message: '请输入备份文件名前缀', trigger: 'blur' },
+    {
+      pattern: /^[^/\\]+$/,
+      message: '文件名前缀不能包含路径分隔符',
+      trigger: 'blur',
+    },
+  ],
   method: [{ required: true, message: '请选择备份方式', trigger: 'change' }],
   local_path: form.method === 'local' ? [{ required: true, message: '请输入本地路径', trigger: 'blur' }] : [],
   endpoint_url: form.method === 'object_storage' ? [{ required: true, message: '请输入 Endpoint', trigger: 'blur' }] : [],
@@ -232,10 +214,8 @@ function applyConfig(data) {
   config.value = data
   secretConfigured.value = data.secret_key_configured
   form.enabled = data.enabled
-  form.frequency = data.frequency
-  form.schedule_hour = data.schedule_hour ?? 2
-  form.schedule_minute = data.schedule_minute ?? 0
-  form.schedule_weekday = data.schedule_weekday || 1
+  form.cron_expression = data.cron_expression || '0 2 * * *'
+  form.backup_file_prefix = data.backup_file_prefix || 'hcs_lld_data_backup_'
   form.method = data.method
   form.local_path = data.local_path || './backups'
   form.endpoint_url = data.endpoint_url || ''
@@ -259,9 +239,8 @@ async function handleSave() {
   saving.value = true
   try {
     const payload = { ...form }
-    if (payload.frequency === 'daily') {
-      payload.schedule_weekday = null
-    }
+    payload.cron_expression = payload.cron_expression.trim()
+    payload.backup_file_prefix = payload.backup_file_prefix.trim()
     if (payload.method === 'local') {
       payload.endpoint_url = ''
       payload.access_key = ''
@@ -307,10 +286,6 @@ async function loadRecords() {
 
 function formatDate(value) {
   return formatDateTime(value)
-}
-
-function pad2(value) {
-  return String(value).padStart(2, '0')
 }
 
 function formatSize(value) {
@@ -377,20 +352,20 @@ onMounted(async () => {
   color: var(--color-text-secondary);
 }
 
-.time-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+.cron-input {
+  max-width: 360px;
 }
 
-.inline-form-item {
-  margin-bottom: 0;
+.prefix-input {
+  max-width: 360px;
 }
 
-.time-separator {
-  line-height: 32px;
+.form-tip {
+  width: 100%;
+  font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
-  font-weight: 600;
+  line-height: 1.5;
+  margin-top: 4px;
 }
 
 .form-actions {

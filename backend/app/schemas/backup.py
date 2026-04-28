@@ -4,16 +4,13 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
-BackupFrequency = Literal["daily", "weekly"]
 BackupMethod = Literal["local", "object_storage"]
 
 
 class BackupConfigUpdate(BaseModel):
     enabled: bool
-    frequency: BackupFrequency = "daily"
-    schedule_hour: int = Field(2, ge=0, le=23)
-    schedule_minute: int = Field(0, ge=0, le=59)
-    schedule_weekday: Optional[int] = Field(1, ge=1, le=7)
+    cron_expression: str = Field("0 2 * * *", min_length=1, max_length=100)
+    backup_file_prefix: str = Field("hcs_lld_data_backup_", min_length=1, max_length=200)
     method: BackupMethod = "local"
     local_path: Optional[str] = Field(None, max_length=500)
     endpoint_url: Optional[str] = Field(None, max_length=500)
@@ -24,8 +21,6 @@ class BackupConfigUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validate_target(self) -> "BackupConfigUpdate":
-        if self.frequency == "weekly" and self.schedule_weekday is None:
-            raise ValueError("每周备份必须选择星期")
         if self.method == "local" and not self.local_path:
             raise ValueError("本地备份路径不能为空")
         if self.method == "object_storage":
@@ -41,10 +36,8 @@ class BackupConfigUpdate(BaseModel):
 class BackupConfigResponse(BaseModel):
     id: str
     enabled: bool
-    frequency: BackupFrequency
-    schedule_hour: int
-    schedule_minute: int
-    schedule_weekday: Optional[int] = None
+    cron_expression: str
+    backup_file_prefix: str
     method: BackupMethod
     local_path: Optional[str] = None
     endpoint_url: Optional[str] = None
@@ -52,7 +45,6 @@ class BackupConfigResponse(BaseModel):
     secret_key_configured: bool = False
     bucket: Optional[str] = None
     object_prefix: Optional[str] = None
-    last_run_at: Optional[str] = None
     next_run_at: Optional[str] = None
     created_at: str
     updated_at: str

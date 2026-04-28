@@ -11,7 +11,7 @@ from app.dependencies import get_current_user, operator_name, require_administra
 from app.exceptions import BusinessError
 from app.models.backup import BackupConfig, BackupRecord
 from app.models.user import User
-from app.schemas.backup import BackupConfigResponse, BackupConfigUpdate, BackupRecordResponse
+from app.schemas.backup import BackupConfigResponse, BackupConfigUpdate, BackupMethod, BackupRecordResponse
 from app.schemas.common import PaginatedResponse
 from app.services.backup import get_backup_config, list_backup_records, run_backup, update_backup_config
 from app.utils.time_utils import format_datetime
@@ -77,22 +77,25 @@ def _to_config_response(config: BackupConfig) -> BackupConfigResponse:
     return BackupConfigResponse(
         id=config.id,
         enabled=config.enabled,
-        frequency=config.frequency,
-        schedule_hour=config.schedule_hour,
-        schedule_minute=config.schedule_minute,
-        schedule_weekday=config.schedule_weekday,
-        method=config.method,
+        cron_expression=config.cron_expression,
+        backup_file_prefix=config.backup_file_prefix,
+        method=_to_backup_method(config.method),
         local_path=config.local_path,
         endpoint_url=config.endpoint_url,
         access_key=config.access_key,
         secret_key_configured=bool(config.secret_key),
         bucket=config.bucket,
         object_prefix=config.object_prefix,
-        last_run_at=_format_dt(config.last_run_at),
         next_run_at=_format_dt(config.next_run_at),
         created_at=format_datetime(config.created_at),
         updated_at=format_datetime(config.updated_at),
     )
+
+
+def _to_backup_method(value: str) -> BackupMethod:
+    if value == "local" or value == "object_storage":
+        return value
+    raise HTTPException(status_code=500, detail=f"Invalid backup method: {value}")
 
 
 def _to_record_response(record: BackupRecord) -> BackupRecordResponse:
