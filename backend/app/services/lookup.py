@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.exceptions import BusinessError
 from app.models.region_network_plane import RegionNetworkPlane
-from app.utils.ip_utils import parse_cidr, parse_ip
+from app.utils.ip_utils import check_overlap, ip_belongs_to_network, parse_cidr, parse_ip
 
 
 def lookup_region_planes(db: Session, q: str, exact: bool = True) -> list[RegionNetworkPlane]:
@@ -33,7 +33,7 @@ def lookup_region_planes(db: Session, q: str, exact: bool = True) -> list[Region
     if ip:
         for plane in planes:
             existing = parse_cidr(plane.cidr or "")
-            if existing and ip in existing:
+            if existing and ip_belongs_to_network(ip, existing):
                 results.append(plane)
     elif net:
         if exact:
@@ -44,7 +44,7 @@ def lookup_region_planes(db: Session, q: str, exact: bool = True) -> list[Region
         else:
             for plane in planes:
                 existing = parse_cidr(plane.cidr or "")
-                if existing and existing.overlaps(net):
+                if existing and check_overlap(existing, net):
                     results.append(plane)
     else:
         raise BusinessError(f"Invalid IP address or CIDR: {q}")

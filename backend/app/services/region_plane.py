@@ -9,7 +9,7 @@ from app.exceptions import BusinessError
 from app.models.network_plane_type import NetworkPlaneType
 from app.models.region_network_plane import RegionNetworkPlane
 from app.services.change_log import log_change
-from app.utils.ip_utils import IPNetwork, find_overlapping, parse_cidr, parse_ip
+from app.utils.ip_utils import IPNetwork, find_overlapping, ip_belongs_to_network, network_is_subnet_of, parse_cidr, parse_ip
 from app.utils.time_utils import format_datetime
 
 DEFAULT_PLANE_SCOPE = "Global"
@@ -156,8 +156,7 @@ def enable_plane_for_region(
         parent_net = parse_cidr(parent_plane.cidr)
         if not parent_net:
             raise BusinessError("父级网络平面 CIDR 格式无效")
-        subnet_check = net.subnet_of(parent_net) if hasattr(net, "subnet_of") else parent_net.supernet_of(net)
-        if not subnet_check:
+        if not network_is_subnet_of(net, parent_net):
             raise BusinessError(f"子平面 CIDR {cidr} 必须在父平面 CIDR {parent_plane.cidr} 范围内")
 
         sibling_cidrs = _get_enabled_child_plane_cidrs(db, region_id, pt.parent_id)
@@ -334,11 +333,10 @@ def _validate_gateway_ip_policy(net: IPNetwork, gateway_ip: str | None, *, is_pr
     ip = parse_ip(gateway_ip)
     if not ip:
         raise BusinessError(f"无效的网关 IP 地址: {gateway_ip}")
-    try:
-        if ip not in net:
-            raise BusinessError(f"网关 IP {gateway_ip} 必须在平面 CIDR {net.with_prefixlen} 范围内")
-    except TypeError as exc:
-        raise BusinessError(f"网关 IP {gateway_ip} 必须与平面 CIDR {net.with_prefixlen} 使用相同 IP 版本") from exc
+    if not ip_belongs_to_network(ip, net):
+        if ip.version != net.version:
+            raise BusinessError(f"网关 IP {gateway_ip} 必须与平面 CIDR {net.with_prefixlen} 使用相同 IP 版本")
+        raise BusinessError(f"网关 IP {gateway_ip} 必须在平面 CIDR {net.with_prefixlen} 范围内")
 
     expected = _expected_gateway_ip(net, is_private=is_private)
     if ip != expected:
