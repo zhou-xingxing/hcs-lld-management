@@ -1,5 +1,39 @@
 """User management API tests."""
 
+from sqlalchemy.exc import IntegrityError
+
+
+def test_create_user_converts_username_integrity_error_to_conflict(client, admin_headers, monkeypatch):
+    from sqlalchemy.orm import Session
+
+    original_flush = Session.flush
+    calls = {"count": 0}
+
+    def flush_once_then_conflict(session, *args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise IntegrityError(
+                "insert users",
+                {},
+                Exception("UNIQUE constraint failed: users.username"),
+            )
+        return original_flush(session, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "flush", flush_once_then_conflict)
+
+    response = client.post(
+        "/api/users",
+        headers=admin_headers,
+        json={
+            "username": "race-user",
+            "password": "password",
+            "role": "user",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "用户名已存在"
+
 
 def test_user_management_crud_with_region_grants(client, admin_headers):
     region_a = client.post("/api/regions", json={"name": "Region-A"}, headers=admin_headers).json()
@@ -115,10 +149,10 @@ def test_user_management_returns_404_for_missing_user(client, admin_headers):
     assert delete_response.status_code == 404
 
 
-def test_delete_last_administrator_is_rejected(client, admin_headers):
+def test_administrator_cannot_delete_self(client, admin_headers):
     me = client.get("/api/auth/me", headers=admin_headers).json()
 
     response = client.delete(f"/api/users/{me['id']}", headers=admin_headers)
 
     assert response.status_code == 409
-    assert "至少需要保留一个启用的 administrator" in response.json()["detail"]
+    assert response.json()["detail"] == "不能删除当前登录用户"

@@ -326,28 +326,62 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 
 ### 6.1 API 端点总览
 
+#### 健康检查
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/health` | 健康检查 |
+
+#### 认证与用户
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
 | POST | `/api/auth/login` | 用户名密码登录，返回 Bearer token |
 | GET | `/api/auth/me` | 查询当前登录用户、角色、Region 授权和权限集合 |
 | GET/POST | `/api/users` | 用户列表/创建用户（administrator） |
-| PUT/DELETE | `/api/users/{id}` | 更新/删除用户（administrator） |
+| PUT/DELETE | `/api/users/{id}` | 更新/删除用户（administrator）；不允许删除当前登录用户 |
 | POST | `/api/users/{id}/reset-password` | 重置用户密码（administrator） |
-| GET/POST | `/api/regions` | 列表/创建 Region |
-| GET/PUT/DELETE | `/api/regions/{id}` | Region 详情/更新/删除 |
-| GET/POST | `/api/regions/{id}/planes` | 启用网络平面类型，返回按全局类型树派生的 Region 平面树 |
-| GET/POST | `/api/network-plane-types` | 列表/创建网络平面类型，支持维护父级类型 |
-| GET/PUT/DELETE | `/api/network-plane-types/{id}` | 类型详情/更新/删除，支持维护父级类型 |
-| GET | `/api/lookup?q={ip_or_cidr}&exact=true` | IP/CIDR 查重 |
+
+#### Region 与网络平面
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET/POST | `/api/regions` | 列表/创建 Region；创建需 administrator |
+| GET/PUT/DELETE | `/api/regions/{id}` | Region 详情（含平面树）/更新/删除；更新和删除需 administrator |
+| GET/POST | `/api/regions/{id}/planes` | 查询 Region 平面树/启用指定网络平面类型节点；写入需 Region 业务权限 |
+| DELETE | `/api/regions/{id}/planes/{plane_id}` | 删除 Region 平面节点并级联删除子平面；需 Region 业务权限 |
+| POST | `/api/regions/{id}/planes/{plane_id}/children` | 兼容旧接口；当前子平面关系由全局网络平面类型维护 |
+
+#### 网络平面类型
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET/POST | `/api/network-plane-types` | 列表/创建网络平面类型，支持维护父级类型；创建需 administrator |
+| GET/PUT/DELETE | `/api/network-plane-types/{id}` | 类型详情/更新/删除，支持维护父级类型；更新和删除需 administrator |
+
+#### 查询与导入导出
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/lookup` | IP/CIDR 查询；参数 `q` 必填，`exact` 可选且默认 true |
 | GET | `/api/excel/template` | 下载导入模板 |
-| POST | `/api/excel/import/preview` | 上传 Excel 预览 |
-| POST | `/api/excel/import/confirm` | 确认导入 |
-| GET | `/api/excel/export` | 导出 Excel |
-| GET | `/api/change-logs` | 变更日志查询 |
+| POST | `/api/excel/import/preview` | 上传 Excel 并预览校验结果 |
+| POST | `/api/excel/import/confirm` | 确认导入预览数据，逐行启用网络平面 |
+| GET | `/api/excel/export` | 导出 Excel，支持按 Region/平面类型筛选 |
+
+#### 审计与统计
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/change-logs` | 变更日志查询，支持实体、操作、操作者、时间和分页筛选 |
 | GET | `/api/stats` | 统计数据 |
-| GET/PUT | `/api/backup/config` | 查询/更新备份配置 |
-| POST | `/api/backup/run` | 立即执行一次备份 |
+
+#### 备份
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET/PUT | `/api/backup/config` | 查询/更新备份配置；更新需 administrator |
+| POST | `/api/backup/run` | 立即执行一次备份；需 administrator |
 | GET | `/api/backup/records` | 查询备份执行历史 |
 
 ### 6.2 关键接口详情
@@ -371,7 +405,8 @@ Region 维度的网络平面实例和 CIDR 配置表。树形结构由 `network_
 
 第二阶段: POST /api/excel/import/confirm
   → 传入 preview_id，后端使用当前登录用户作为操作者
-  → 批量插入有效行，逐行检查 CIDR 重叠
+  → 检查预览数据涉及的所有 Region 是否都允许当前用户写入
+  → 逐行启用 Region 网络平面，逐行检查 CIDR 重叠并收集错误
   → 逐条记录变更日志
 ```
 
@@ -400,7 +435,7 @@ GET /api/backup/records
 
 ### 6.3 错误处理
 
-所有 API 错误返回一致格式：`{ "detail": "错误描述" }`
+业务错误返回统一格式：`{ "detail": "错误描述" }`。FastAPI/Pydantic 参数校验错误（422）中 `detail` 为校验错误列表。
 
 | 场景 | HTTP 状态码 |
 |---|---|
@@ -425,9 +460,11 @@ GET /api/backup/records
 1. `administrator` 可以创建、更新、删除 Region 基础对象（Region 元数据），对应能力标签为 `manage:region-metadata`。
 2. `administrator` 不写 Region 内业务数据，避免全局管理员直接修改业务规划。
 3. `user` 不能管理用户、Region 元数据和全局配置。
-4. Excel 导入确认会检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
-5. 变更日志的 `operator` 来自当前登录用户 `display_name` 或 `username`，不再接受客户端伪造的 `X-Operator`。
-6. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_regions` 授权校验为准。
+4. `administrator` 可以管理其他用户账号，但不能删除当前登录用户。
+5. 更新用户角色或禁用用户时仍会保护最后一个启用的 `administrator`，防止系统失去可登录管理员。
+6. Excel 导入确认会检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
+7. 变更日志的 `operator` 来自当前登录用户 `display_name` 或 `username`，不再接受客户端伪造的 `X-Operator`。
+8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_regions` 授权校验为准。
 
 ### 6.5 启动初始化
 

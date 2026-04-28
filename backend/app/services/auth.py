@@ -8,6 +8,7 @@ import secrets
 from datetime import timedelta
 from typing import Any, Optional, cast
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -117,7 +118,12 @@ def create_user(db: Session, data: UserCreate) -> User:
         is_active=data.is_active,
     )
     db.add(user)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        if _is_username_unique_conflict(exc):
+            raise BusinessError("用户名已存在") from exc
+        raise
     _replace_user_regions(db, user, data.region_ids)
     db.flush()
     return user
@@ -154,11 +160,10 @@ def reset_password(db: Session, user_id: str, password: str) -> Optional[User]:
 
 
 def delete_user(db: Session, user_id: str) -> bool:
-    """Delete a user if it is not the last active administrator."""
+    """Delete a user."""
     user = get_user(db, user_id)
     if not user:
         return False
-    _ensure_not_last_administrator(db, user, target_active=False)
     db.delete(user)
     db.flush()
     return True
@@ -231,6 +236,11 @@ def _ensure_not_last_administrator(
     active_admins = db.query(User).filter(User.role == "administrator", User.is_active.is_(True)).count()
     if active_admins <= 1:
         raise BusinessError("至少需要保留一个启用的 administrator")
+
+
+def _is_username_unique_conflict(exc: IntegrityError) -> bool:
+    message = str(exc.orig).lower()
+    return "username" in message and ("unique" in message or "duplicate" in message)
 
 
 def _encode_jwt(payload: dict[str, Any]) -> str:

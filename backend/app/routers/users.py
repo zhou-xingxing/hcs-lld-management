@@ -63,9 +63,11 @@ def reset_password_endpoint(user_id: str, data: PasswordReset, db: Session = Dep
 def delete_user_endpoint(
     user_id: str,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_administrator),
+    current_user: User = Depends(require_administrator),
 ) -> None:
     """Delete a local user."""
+    if user_id == current_user.id:
+        raise HTTPException(status_code=409, detail="不能删除当前登录用户")
     try:
         deleted = delete_user(db, user_id)
     except BusinessError as e:
