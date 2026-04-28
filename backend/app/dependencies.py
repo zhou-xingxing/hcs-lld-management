@@ -45,6 +45,15 @@ def ensure_region_business_write_allowed(current_user: User, region_id: str) -> 
         raise HTTPException(status_code=403, detail="无权管理该 Region 的业务数据")
 
 
+def require_region_business_write(
+    region_id: str,
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Require Region business write permission for endpoints with a region_id path parameter."""
+    ensure_region_business_write_allowed(current_user, region_id)
+    return current_user
+
+
 def operator_name(current_user: User) -> str:
     """Return the audit operator name for the current user."""
     return current_user.display_name or current_user.username

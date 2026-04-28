@@ -5,10 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import (
-    ensure_region_business_write_allowed,
     get_current_user,
     operator_name,
     require_administrator,
+    require_region_business_write,
 )
 from app.exceptions import BusinessError
 from app.models.user import User
@@ -143,7 +143,7 @@ def enable_plane_endpoint(
     region_id: str,
     data: RegionPlaneCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_region_business_write),
 ) -> dict[str, Any]:
     """为 Region 启用根级网络平面。"""
     from app.models.network_plane_type import NetworkPlaneType
@@ -153,7 +153,6 @@ def enable_plane_endpoint(
     region = get_region(db, region_id)
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
-    ensure_region_business_write_allowed(current_user, region_id)
     pt = db.query(NetworkPlaneType).filter(NetworkPlaneType.id == data.plane_type_id).first()
     if not pt:
         raise HTTPException(status_code=404, detail="Plane type not found")
@@ -218,7 +217,7 @@ def create_child_plane_endpoint(
     plane_id: str,
     data: ChildPlaneCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_region_business_write),
 ) -> dict[str, Any]:
     """兼容旧接口：子平面关系现在由全局网络平面类型树维护。"""
     from app.services.region import get_region
@@ -226,7 +225,6 @@ def create_child_plane_endpoint(
     region = get_region(db, region_id)
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
-    ensure_region_business_write_allowed(current_user, region_id)
     try:
         create_child_plane(db, region_id, plane_id, data.cidr, operator_name(current_user))
     except BusinessError as e:
@@ -239,10 +237,9 @@ def disable_plane_endpoint(
     region_id: str,
     plane_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_region_business_write),
 ) -> None:
     """删除平面节点（级联删除子平面）。"""
-    ensure_region_business_write_allowed(current_user, region_id)
     deleted = disable_plane_for_region(db, region_id, plane_id, operator_name(current_user))
     if not deleted:
         raise HTTPException(status_code=404, detail="Region plane association not found")
