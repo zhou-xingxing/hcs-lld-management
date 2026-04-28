@@ -258,7 +258,7 @@ erDiagram
 | id | String(36) UUID | PK | UUID v4 |
 | region_id | String(36) | FK -> regions.id, CASCADE | 所属 Region |
 | plane_type_id | String(36) | FK -> network_plane_types.id, CASCADE | 启用的平面类型 |
-| scope | String(100) | NOT NULL, default="Global", UNIQUE(region_id, plane_type_id, scope) | 平面实例作用域；Global 表示 Region 全局 |
+| scope | String(100) | NOT NULL, default="Global", UNIQUE(region_id, plane_type_id, scope) | 平面实例作用域，如业务AZ1；Global 表示作用域为全局 |
 | cidr | String(43) | NULLABLE | CIDR 地址段，如 "10.0.0.0/22" |
 | vlan_id | Integer | NULLABLE, 1-4094 | VLAN ID |
 | gateway_position | String(255) | NULLABLE | 网关位置，如一对交换机设备名称或端口位置 |

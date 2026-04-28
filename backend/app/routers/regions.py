@@ -33,6 +33,7 @@ from app.services.region_plane import (
     disable_plane_for_region,
     enable_plane_for_region,
     get_region_plane_tree,
+    normalize_plane_scope,
 )
 from app.utils.time_utils import format_datetime
 
@@ -163,7 +164,7 @@ def enable_plane_endpoint(
             data.plane_type_id,
             data.cidr,
             operator_name(current_user),
-            scope=data.scope,
+            scope=normalize_plane_scope(data.scope),
             vlan_id=data.vlan_id,
             gateway_position=data.gateway_position,
             gateway_ip=data.gateway_ip,
