@@ -1,5 +1,15 @@
 # HCS LLD 管理系统 - 项目说明
 
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/zhou-xingxing/hcs-lld-management/ci.yml?branch=main&label=CI%2FCD&style=flat-square)](https://github.com/zhou-xingxing/hcs-lld-management/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Vue](https://img.shields.io/badge/Vue-3.5%2B-42b883?style=flat-square&logo=vue.js&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-5.4%2B-646CFF?style=flat-square&logo=vite&logoColor=white)
+![Element Plus](https://img.shields.io/badge/Element%20Plus-2.8%2B-409EFF?style=flat-square)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0%2B-D71F00?style=flat-square)
+![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-GHCR-2496ED?style=flat-square&logo=docker&logoColor=white)
+
 ## 代码行数统计
 
 <!-- code-lines:start -->
