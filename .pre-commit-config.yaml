@@ -8,3 +8,10 @@ repos:
     rev: 24.10.0
     hooks:
       - id: black
+  - repo: local
+    hooks:
+      - id: update-code-line-statistics
+        name: update README code line statistics
+        entry: bash -c 'python3 scripts/count_code_lines.py --update-readme README.md && git add README.md'
+        language: system
+        pass_filenames: false
