@@ -274,9 +274,9 @@ pre-commit install
 
 启动后端后访问 http://localhost:8000/docs 即可查看交互式 API 文档（Swagger UI），支持在线测试所有 API。
 
-## 技术栈
+## 系统设计
 
-详见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 第 3 节「技术选型」。
+详见 [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) 。
 
 ## 使用流程
 
