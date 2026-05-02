@@ -8,6 +8,7 @@ from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.routers import auth, backup, change_logs, excel, lookup, network_plane_types, regions, stats, users
 from app.services.auth import ensure_bootstrap_admin
+from app.services.backup import ensure_backup_config
 from app.services.backup_scheduler import backup_scheduler
 
 
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     db = SessionLocal()
     try:
         ensure_bootstrap_admin(db)
+        ensure_backup_config(db)
         db.commit()
     except Exception:
         db.rollback()

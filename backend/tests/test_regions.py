@@ -1,6 +1,5 @@
 """Region CRUD tests."""
 
-
 REGION_DATA = {"name": "HCS华北-北京", "description": "Production region"}
 
 

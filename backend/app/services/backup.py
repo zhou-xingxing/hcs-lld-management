@@ -164,8 +164,10 @@ def _cron_matches(candidate: datetime, cron: tuple[set[int], set[int], set[int],
     )
 
 
-def get_backup_config(db: Session) -> BackupConfig:
-    """获取全局备份配置，不存在时创建默认配置。
+def ensure_backup_config(db: Session) -> BackupConfig:
+    """确保全局备份配置存在，不存在时创建默认配置。
+
+    应在应用启动时调用一次。
 
     Args:
         db: 数据库会话。
@@ -186,6 +188,24 @@ def get_backup_config(db: Session) -> BackupConfig:
     )
     db.add(config)
     db.flush()
+    return config
+
+
+def get_backup_config(db: Session) -> BackupConfig:
+    """获取全局备份配置。
+
+    Args:
+        db: 数据库会话。
+
+    Returns:
+        全局备份配置。
+
+    Raises:
+        BusinessError: 配置不存在。
+    """
+    config = db.query(BackupConfig).order_by(BackupConfig.created_at.asc()).first()
+    if not config:
+        raise BusinessError("备份配置不存在")
     return config
 
 

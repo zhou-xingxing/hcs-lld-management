@@ -14,7 +14,7 @@ from app.models.region import Region
 from app.services.backup import calculate_next_run, run_due_backup, utcnow
 
 
-def test_get_backup_config_creates_default(client, admin_headers):
+def test_get_backup_config_returns_default(client, admin_headers):
     response = client.get("/api/backup/config", headers=admin_headers)
 
     assert response.status_code == 200
@@ -313,15 +313,12 @@ def test_run_due_backup_only_when_enabled_and_due(test_db, tmp_path):
     session = Session(test_db)
     try:
         session.add(Region(name="cn-north-1", description="北京"))
-        session.add(
-            BackupConfig(
-                enabled=True,
-                cron_expression="30 2 * * *",
-                method="local",
-                local_path=str(tmp_path),
-                next_run_at=utcnow() - timedelta(minutes=1),
-            )
-        )
+        config = session.query(BackupConfig).first()
+        config.enabled = True
+        config.cron_expression = "30 2 * * *"
+        config.method = "local"
+        config.local_path = str(tmp_path)
+        config.next_run_at = utcnow() - timedelta(minutes=1)
         session.commit()
 
         record = run_due_backup(session)
@@ -354,9 +351,7 @@ def test_calculate_next_run_weekly_uses_weekday_and_time():
 def test_calculate_next_run_supports_steps_ranges_and_lists():
     base_time = datetime(2026, 4, 25, 18, 10, tzinfo=timezone.utc)
 
-    assert calculate_next_run(base_time, "*/15 2-4 * * 0,1") == datetime(
-        2026, 4, 25, 18, 15, tzinfo=timezone.utc
-    )
+    assert calculate_next_run(base_time, "*/15 2-4 * * 0,1") == datetime(2026, 4, 25, 18, 15, tzinfo=timezone.utc)
 
 
 def test_calculate_next_run_uses_cron_day_or_weekday_semantics():

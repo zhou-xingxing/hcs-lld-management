@@ -10,6 +10,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.schemas.user import UserCreate
 from app.services.auth import create_user, ensure_bootstrap_admin
+from app.services.backup import ensure_backup_config
 
 
 @pytest.fixture
@@ -25,6 +26,7 @@ def test_db():
     bootstrap_db = TestSessionLocal()
     try:
         ensure_bootstrap_admin(bootstrap_db)
+        ensure_backup_config(bootstrap_db)
         bootstrap_db.commit()
     except Exception:
         bootstrap_db.rollback()

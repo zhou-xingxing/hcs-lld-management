@@ -22,7 +22,10 @@ router = APIRouter(prefix="/api/backup", tags=["Backup"], dependencies=[Depends(
 @router.get("/config", response_model=BackupConfigResponse)
 def get_config_endpoint(db: Session = Depends(get_db)) -> BackupConfigResponse:
     """获取全局备份配置。"""
-    config = get_backup_config(db)
+    try:
+        config = get_backup_config(db)
+    except BusinessError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return _to_config_response(config)
 
 

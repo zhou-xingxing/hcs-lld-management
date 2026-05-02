@@ -1,5 +1,6 @@
 """IP Lookup tests."""
 
+
 def _setup_data(client, admin_headers, user_headers_factory):
     """Create a region with an enabled network plane for lookup tests."""
     r = client.post("/api/regions", json={"name": "TestRegion"}, headers=admin_headers).json()
