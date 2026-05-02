@@ -11,6 +11,7 @@ engine = create_engine(
     echo=False,
 )
 
+# 数据库会话工厂，每次请求通过 get_db() 获取独立会话
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
