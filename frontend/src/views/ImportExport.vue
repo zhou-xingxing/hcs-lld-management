@@ -150,7 +150,9 @@ import { useAppStore } from '@/stores/app'
 import { Download, Upload } from '@element-plus/icons-vue'
 
 const appStore = useAppStore()
-const canImport = computed(() => appStore.currentUser?.role === 'user' && (appStore.currentUser?.regions || []).length > 0)
+const canImport = computed(
+  () => appStore.currentUser?.role === 'user' && (appStore.currentUser?.permitted_regions || []).length > 0
+)
 const activeTab = ref('import')
 
 const downloading = ref(false)

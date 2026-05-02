@@ -30,19 +30,19 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db, onupdate=utcnow_db)
 
-    region_links: Mapped[list[UserRegion]] = relationship(
-        "UserRegion", back_populates="user", cascade="all, delete-orphan"
+    region_permissions: Mapped[list[UserRegionPermission]] = relationship(
+        "UserRegionPermission", back_populates="user", cascade="all, delete-orphan"
     )
 
 
-class UserRegion(Base):
-    __tablename__ = "user_regions"
-    __table_args__ = (UniqueConstraint("user_id", "region_id", name="uq_user_region"),)
+class UserRegionPermission(Base):
+    __tablename__ = "user_region_permissions"
+    __table_args__ = (UniqueConstraint("user_id", "region_id", name="uq_user_region_permission"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     region_id: Mapped[str] = mapped_column(String(36), ForeignKey("regions.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_db)
 
-    user: Mapped[User] = relationship("User", back_populates="region_links")
+    user: Mapped[User] = relationship("User", back_populates="region_permissions")
     region: Mapped[Region] = relationship("Region")

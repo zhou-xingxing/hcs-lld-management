@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 UserRole = Literal["administrator", "user"]
 
 
-class RegionGrant(BaseModel):
+class PermittedRegion(BaseModel):
     id: str
     name: str
 
@@ -18,7 +18,7 @@ class UserResponse(BaseModel):
     role: UserRole
     display_name: str
     is_active: bool
-    regions: list[RegionGrant] = []
+    permitted_regions: list[PermittedRegion] = []
     created_at: str
     updated_at: str
 
@@ -29,7 +29,7 @@ class CurrentUserResponse(BaseModel):
     role: UserRole
     display_name: str
     is_active: bool
-    regions: list[RegionGrant] = []
+    permitted_regions: list[PermittedRegion] = []
     permissions: list[str] = []
 
 
@@ -50,14 +50,14 @@ class UserCreate(BaseModel):
     role: UserRole = "user"
     display_name: str = Field("", max_length=100)
     is_active: bool = True
-    region_ids: list[str] = []
+    permitted_region_ids: list[str] = []
 
 
 class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     display_name: Optional[str] = Field(None, max_length=100)
     is_active: Optional[bool] = None
-    region_ids: Optional[list[str]] = None
+    permitted_region_ids: Optional[list[str]] = None
 
 
 class PasswordReset(BaseModel):

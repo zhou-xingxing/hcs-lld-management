@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.exceptions import BusinessError
 from app.models.region import Region
-from app.models.user import User, UserRegion
+from app.models.user import User, UserRegionPermission
 from app.schemas.user import UserCreate, UserUpdate
 from app.utils.time_utils import format_datetime, utcnow
 
@@ -107,7 +107,7 @@ def list_users(db: Session, skip: int = 0, limit: int = 100) -> tuple[list[User]
 
 
 def create_user(db: Session, data: UserCreate) -> User:
-    """Create a local user and assign optional Region grants."""
+    """Create a local user and assign optional Region permissions."""
     if get_user_by_username(db, data.username):
         raise BusinessError("用户名已存在")
     user = User(
@@ -124,13 +124,13 @@ def create_user(db: Session, data: UserCreate) -> User:
         if _is_username_unique_conflict(exc):
             raise BusinessError("用户名已存在") from exc
         raise
-    _replace_user_regions(db, user, data.region_ids)
+    _replace_user_region_permissions(db, user, data.permitted_region_ids)
     db.flush()
     return user
 
 
 def update_user(db: Session, user_id: str, data: UserUpdate) -> Optional[User]:
-    """Update user profile, role, active status, and Region grants."""
+    """Update user profile, role, active status, and Region permissions."""
     user = get_user(db, user_id)
     if not user:
         return None
@@ -143,8 +143,8 @@ def update_user(db: Session, user_id: str, data: UserUpdate) -> Optional[User]:
         user.is_active = data.is_active
     if data.display_name is not None:
         user.display_name = data.display_name or user.username
-    if data.region_ids is not None:
-        _replace_user_regions(db, user, data.region_ids)
+    if data.permitted_region_ids is not None:
+        _replace_user_region_permissions(db, user, data.permitted_region_ids)
     db.flush()
     return user
 
@@ -192,7 +192,11 @@ def user_to_response(user: User) -> dict[str, Any]:
         "role": user.role,
         "display_name": user.display_name or user.username,
         "is_active": user.is_active,
-        "regions": [{"id": link.region.id, "name": link.region.name} for link in user.region_links if link.region],
+        "permitted_regions": [
+            {"id": permission.region.id, "name": permission.region.name}
+            for permission in user.region_permissions
+            if permission.region
+        ],
         "created_at": format_datetime(user.created_at),
         "updated_at": format_datetime(user.updated_at),
     }
@@ -208,19 +212,23 @@ def current_user_to_response(user: User) -> dict[str, Any]:
     return {**user_to_response(user), "permissions": permissions}
 
 
-def get_user_region_ids(user: User) -> set[str]:
-    """Return the Region IDs assigned to a user."""
-    return {link.region_id for link in user.region_links}
+def get_user_permitted_region_ids(user: User) -> set[str]:
+    """Return the Region IDs that a user is permitted to write."""
+    return {permission.region_id for permission in user.region_permissions}
 
 
-def _replace_user_regions(db: Session, user: User, region_ids: list[str]) -> None:
-    existing_regions = {r.id for r in db.query(Region).filter(Region.id.in_(region_ids)).all()} if region_ids else set()
-    missing = set(region_ids) - existing_regions
+def _replace_user_region_permissions(db: Session, user: User, permitted_region_ids: list[str]) -> None:
+    existing_regions = (
+        {r.id for r in db.query(Region).filter(Region.id.in_(permitted_region_ids)).all()}
+        if permitted_region_ids
+        else set()
+    )
+    missing = set(permitted_region_ids) - existing_regions
     if missing:
         raise BusinessError(f"Region 不存在: {', '.join(sorted(missing))}")
-    user.region_links.clear()
+    user.region_permissions.clear()
     for region_id in sorted(existing_regions):
-        user.region_links.append(UserRegion(region_id=region_id))
+        user.region_permissions.append(UserRegionPermission(region_id=region_id))
 
 
 def _ensure_not_last_administrator(

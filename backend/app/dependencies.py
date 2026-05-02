@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.exceptions import BusinessError
 from app.models.user import User
-from app.services.auth import decode_access_token, get_user, get_user_region_ids
+from app.services.auth import decode_access_token, get_user, get_user_permitted_region_ids
 
 
 def get_current_user(
@@ -38,10 +38,10 @@ def require_administrator(current_user: User = Depends(get_current_user)) -> Use
 
 
 def ensure_region_business_write_allowed(current_user: User, region_id: str) -> None:
-    """Require a normal user assigned to the target Region for business writes."""
+    """Require a normal user permitted to write business data in the target Region."""
     if current_user.role == "administrator":
         raise HTTPException(status_code=403, detail="administrator 不可管理 Region 内业务数据")
-    if region_id not in get_user_region_ids(current_user):
+    if region_id not in get_user_permitted_region_ids(current_user):
         raise HTTPException(status_code=403, detail="无权管理该 Region 的业务数据")
 
 

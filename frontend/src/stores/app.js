@@ -7,7 +7,9 @@ export const useAppStore = defineStore('app', () => {
   const sidebarCollapsed = ref(false)
   const isAuthenticated = computed(() => Boolean(token.value))
   const isAdministrator = computed(() => currentUser.value?.role === 'administrator')
-  const assignedRegionIds = computed(() => new Set((currentUser.value?.regions || []).map((item) => item.id)))
+  const permittedRegionIds = computed(() =>
+    new Set((currentUser.value?.permitted_regions || []).map((item) => item.id))
+  )
 
   function setSession(accessToken, user) {
     token.value = accessToken
@@ -33,7 +35,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function canManageRegionBusiness(regionId) {
-    return currentUser.value?.role === 'user' && assignedRegionIds.value.has(regionId)
+    return currentUser.value?.role === 'user' && permittedRegionIds.value.has(regionId)
   }
 
   return {
@@ -42,7 +44,7 @@ export const useAppStore = defineStore('app', () => {
     sidebarCollapsed,
     isAuthenticated,
     isAdministrator,
-    assignedRegionIds,
+    permittedRegionIds,
     setSession,
     setCurrentUser,
     logout,

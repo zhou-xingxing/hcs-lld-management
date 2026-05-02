@@ -60,7 +60,7 @@ graph TB
         Routers["Routers（API 路由层）<br/>auth · users · regions · plane-types · lookup · excel<br/>change-logs · stats · backup"]
         Deps["Dependencies<br/>Bearer Token 认证 · 角色校验 · Region 授权校验"]
         Services["Services（业务逻辑层）<br/>auth / region / plane_type / region_plane / excel / change_log / backup<br/>· 密码哈希与 token 签发<br/>· CIDR 重叠检测（Python ipaddress）<br/>· 变更日志自动记录<br/>· Excel 预览缓存（30 分钟 TTL）<br/>· 备份目标配置、手动备份、定时备份调度"]
-        Models["Models（SQLAlchemy ORM）<br/>User / UserRegion / Region / NetworkPlaneType / RegionNetworkPlane /<br/>ChangeLog / BackupConfig / BackupRecord"]
+        Models["Models（SQLAlchemy ORM）<br/>User / UserRegionPermission / Region / NetworkPlaneType / RegionNetworkPlane /<br/>ChangeLog / BackupConfig / BackupRecord"]
         Routers --> Deps
         Deps --> Services
         Routers --> Services --> Models
@@ -97,8 +97,8 @@ graph TB
 
 ```mermaid
 erDiagram
-    User ||--o{ UserRegion : "1:N"
-    Region ||--o{ UserRegion : "1:N"
+    User ||--o{ UserRegionPermission : "拥有权限"
+    Region ||--o{ UserRegionPermission : "权限范围"
     Region ||--o{ RegionNetworkPlane : "1:N"
     NetworkPlaneType ||--o{ NetworkPlaneType : "self parent-child"
     NetworkPlaneType ||--o{ RegionNetworkPlane : "1:N"
@@ -114,7 +114,7 @@ erDiagram
         datetime updated_at
     }
 
-    UserRegion {
+    UserRegionPermission {
         string id PK
         string user_id FK "UK(user_id, region_id)"
         string region_id FK "UK(user_id, region_id)"
@@ -213,18 +213,22 @@ erDiagram
 
 本地账号表。系统启动时若 `users` 表为空，会创建一个 bootstrap administrator。
 
-#### user_regions
+#### user_region_permissions
+
+`user_region_permissions` 是用户与其被授权 Region 的权限关联表，用来表达普通 `user` 可写入哪些 Region 内的业务数据；
+它不是用户所属 Region、驻场 Region 或组织归属关系。
 
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | id | String(36) UUID | PK | UUID v4 |
 | user_id | String(36) | FK -> users.id, CASCADE, INDEX | 用户 ID |
-| region_id | String(36) | FK -> regions.id, CASCADE, INDEX | 授权管理的 Region |
+| region_id | String(36) | FK -> regions.id, CASCADE, INDEX | 被授权写入业务数据的 Region |
 | created_at | DateTime | NOT NULL | 创建时间 |
 
-约束：`UNIQUE(user_id, region_id)`，防止同一个用户重复绑定同一个 Region。
+约束：`UNIQUE(user_id, region_id)`，防止同一个用户重复获得同一个 Region 的授权。
 
-普通 user 的 Region 授权表。`administrator` 不依赖此表获得权限；普通 user 只能写入被授权 Region 的业务数据。
+普通 `user` 的 Region 业务写权限授权表。`administrator` 不依赖此表获得权限；普通 `user`
+只能写入被授权 Region 的业务数据。
 
 #### regions
 
@@ -464,7 +468,7 @@ GET /api/backup/records
 5. 更新用户角色或禁用用户时仍会保护最后一个启用的 `administrator`，防止系统失去可登录管理员。
 6. Excel 导入确认会检查预览数据覆盖的所有 Region，任一 Region 未授权则拒绝导入。
 7. 变更日志的 `operator` 来自当前登录用户 `display_name` 或 `username`，不再接受客户端伪造的 `X-Operator`。
-8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_regions` 授权校验为准。
+8. `/api/auth/me` 返回的 `permissions` 是给前端展示和未来扩展使用的能力标签；当前后端实际放行逻辑以 `role` 和 `user_region_permissions` 授权校验为准。
 
 ### 6.5 启动初始化
 
@@ -584,7 +588,7 @@ GET /api/backup/records
 
 **权限标签**：`/api/auth/me` 会返回当前用户的粗粒度能力标签。`administrator` 包含 `read:all`、`manage:users`、`manage:global-config`、`manage:region-metadata`；普通 `user` 包含 `read:all`、`manage:assigned-region-business`。这些标签用于描述能力边界和支持前端展示，当前后端权限判定仍通过 `require_administrator()` 与 `ensure_region_business_write_allowed()` 执行。
 
-**理由**：当前系统是内部部署的管理工具，暂不引入 SSO/OIDC 可降低部署复杂度；两类角色与 TODO 中的权限边界一致。Region 授权单独建 `user_regions` 表，既能表达普通 user 的业务归属，也避免把权限规则散落在前端。
+**理由**：当前系统是内部部署的管理工具，暂不引入 SSO/OIDC 可降低部署复杂度；两类角色与 TODO 中的权限边界一致。Region 授权单独建 `user_region_permissions` 表，既能表达普通 `user` 的业务写权限范围，也避免把权限规则散落在前端。
 
 **审计策略**：变更日志仍由 Service 层显式写入，但 `operator` 由 Router 层从当前登录用户解析得到，前端不再传递操作者字段。
 

@@ -20,7 +20,7 @@
         <el-table-column label="Region 授权" min-width="220">
           <template #default="{ row }">
             <span v-if="row.role === 'administrator'" class="muted">全局管理账号</span>
-            <el-tag v-for="region in row.regions" v-else :key="region.id" size="small" class="region-tag">
+            <el-tag v-for="region in row.permitted_regions" v-else :key="region.id" size="small" class="region-tag">
               {{ region.name }}
             </el-tag>
           </template>
@@ -58,7 +58,13 @@
           <el-switch v-model="form.is_active" active-text="启用" inactive-text="停用" />
         </el-form-item>
         <el-form-item label="Region" v-if="form.role === 'user'">
-          <el-select v-model="form.region_ids" multiple filterable placeholder="选择可管理 Region" style="width: 100%">
+          <el-select
+            v-model="form.permitted_region_ids"
+            multiple
+            filterable
+            placeholder="选择可管理 Region"
+            style="width: 100%"
+          >
             <el-option v-for="region in regions" :key="region.id" :label="region.name" :value="region.id" />
           </el-select>
         </el-form-item>
@@ -103,7 +109,7 @@ const form = reactive({
   role: 'user',
   display_name: '',
   is_active: true,
-  region_ids: [],
+  permitted_region_ids: [],
 })
 const resetForm = reactive({ id: '', password: '' })
 const roleOptions = [
@@ -136,7 +142,14 @@ async function loadRegions() {
 
 function openCreate() {
   editingId.value = ''
-  Object.assign(form, { username: '', password: '', role: 'user', display_name: '', is_active: true, region_ids: [] })
+  Object.assign(form, {
+    username: '',
+    password: '',
+    role: 'user',
+    display_name: '',
+    is_active: true,
+    permitted_region_ids: [],
+  })
   dialogVisible.value = true
 }
 
@@ -148,7 +161,7 @@ function openEdit(row) {
     role: row.role,
     display_name: row.display_name,
     is_active: row.is_active,
-    region_ids: row.regions.map((region) => region.id),
+    permitted_region_ids: row.permitted_regions.map((region) => region.id),
   })
   dialogVisible.value = true
 }
@@ -161,7 +174,7 @@ async function handleSubmit() {
       role: form.role,
       display_name: form.display_name,
       is_active: form.is_active,
-      region_ids: form.role === 'user' ? form.region_ids : [],
+      permitted_region_ids: form.role === 'user' ? form.permitted_region_ids : [],
     }
     if (editingId.value) {
       await updateUser(editingId.value, payload)

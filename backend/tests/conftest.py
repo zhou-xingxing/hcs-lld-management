@@ -8,18 +8,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import (
-    BackupConfig,
-    BackupRecord,
-    ChangeLog,
-    NetworkPlaneType,
-    Region,
-    RegionNetworkPlane,
-    User,
-    UserRegion,
-)
-from app.services.auth import create_user, ensure_bootstrap_admin
 from app.schemas.user import UserCreate
+from app.services.auth import create_user, ensure_bootstrap_admin
 
 
 @pytest.fixture
@@ -78,9 +68,9 @@ def admin_headers(client):
 
 @pytest.fixture
 def user_headers_factory(test_db, client):
-    """Create a user assigned to Region IDs and return Authorization headers."""
+    """Create a user permitted to write Region IDs and return Authorization headers."""
 
-    def _factory(region_ids, username="region-user"):
+    def _factory(permitted_region_ids, username="region-user"):
         session = Session(test_db)
         try:
             create_user(
@@ -90,7 +80,7 @@ def user_headers_factory(test_db, client):
                     password="password",
                     role="user",
                     display_name="Region User",
-                    region_ids=list(region_ids),
+                    permitted_region_ids=list(permitted_region_ids),
                 ),
             )
             session.commit()
